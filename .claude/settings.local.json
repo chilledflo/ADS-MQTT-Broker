@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /B)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(timeout 15 npm run dev:v2:*)",
+      "Bash(timeout 20 npm run dev:v2)",
+      "Bash(timeout 25 npx ts-node:*)",
+      "Bash(npm run dev:v2:*)",
+      "Bash(taskkill:*)",
+      "Bash(nul)",
+      "Bash(pkill:*)",
+      "Bash(timeout 3 powershell:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "name": "ads-mqtt-broker",
+  "version": "2.0.0",
+  "description": "Production-ready MQTT Broker with ADS Gateway integration, REST API, audit logging and admin dashboard",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "dev:v2": "ts-node src/index-v2.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:v2": "node dist/index-v2.js",
+    "watch": "tsc --watch",
+    "lint": "eslint src/**/*.ts",
+    "test": "node test-broker.js",
+    "docker:build": "docker build -t ads-mqtt-broker .",
+    "docker:run": "docker run -p 1883:1883 -p 8080:8080 --rm ads-mqtt-broker"
+  },
+  "keywords": [
+    "mqtt",
+    "broker",
+    "aedes",
+    "ads",
+    "beckhoff",
+    "rest-api",
+    "audit-logging",
+    "admin-dashboard"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "aedes": "^0.46.3",
+    "better-sqlite3": "^12.4.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "mqtt": "^5.3.1",
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.5",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "eslint": "^8.55.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
+  }
+}
