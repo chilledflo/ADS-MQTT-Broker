@@ -1,14 +1,16 @@
 {
   "name": "ads-mqtt-broker",
-  "version": "2.0.0",
-  "description": "Production-ready MQTT Broker with ADS Gateway integration, REST API, audit logging and admin dashboard",
+  "version": "3.0.0",
+  "description": "Production-ready MQTT Broker with ADS Gateway integration, Multi-Connection support, Auto-Discovery, REST API, audit logging and admin dashboard",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
     "dev:v2": "ts-node src/index-v2.ts",
+    "dev:v3": "ts-node src/index-v3.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "start:v2": "node dist/index-v2.js",
+    "start:v3": "node dist/index-v3.js",
     "watch": "tsc --watch",
     "lint": "eslint src/**/*.ts",
     "test": "node test-broker.js",

@@ -13,7 +13,18 @@
       "Bash(pkill:*)",
       "Bash(timeout 3 powershell:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git config:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(gh --version:*)",
+      "Bash(winget install:*)",
+      "Bash(choco install:*)",
+      "Bash(npm run dev:v3:*)"
     ],
     "deny": [],
     "ask": []

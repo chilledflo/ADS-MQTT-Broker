@@ -215,14 +215,22 @@ export class MonitoringService extends EventEmitter {
     };
   }
 
-  incrementMqttMessages(type: 'received' | 'published', bytes: number): void {
+  incrementMqttMessages(type?: 'received' | 'published', bytes?: number): void {
     if (type === 'received') {
       this.mqttMetrics.messagesReceived++;
-      this.mqttMetrics.bytesReceived += bytes;
+      this.mqttMetrics.bytesReceived += bytes || 0;
     } else {
       this.mqttMetrics.messagesPublished++;
-      this.mqttMetrics.bytesPublished += bytes;
+      this.mqttMetrics.bytesPublished += bytes || 0;
     }
+  }
+
+  incrementMqttClients(): void {
+    this.mqttMetrics.totalClients++;
+  }
+
+  decrementMqttClients(): void {
+    this.mqttMetrics.totalClients--;
   }
 
   getMqttMetrics(): MqttMetrics {
@@ -308,5 +316,18 @@ export class MonitoringService extends EventEmitter {
       api: this.getApiMetrics(),
       database: this.persistence.getDatabaseStats()
     };
+  }
+
+  // ===== Reference setters for index-v3.ts =====
+
+  private adsConnectionManager: any = null;
+  private mqttBroker: any = null;
+
+  setAdsConnectionManager(manager: any): void {
+    this.adsConnectionManager = manager;
+  }
+
+  setMqttBroker(broker: any): void {
+    this.mqttBroker = broker;
   }
 }
