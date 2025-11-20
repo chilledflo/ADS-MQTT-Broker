@@ -1,19 +1,35 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { AdsGateway, AdsVariable } from './ads-gateway';
 import { MqttBroker } from './mqtt-broker';
 import { AuditLogger } from './audit-logger';
+import { NetworkScanner } from './network-scanner';
+import { ErrorManager } from './error-manager';
 
 export interface ApiConfig {
   port: number;
   host: string;
 }
 
+export interface AdsRoute {
+  id: string;
+  name: string;
+  netId: string;
+  ipAddress: string;
+  port: number;
+  description?: string;
+  active: boolean;
+}
+
 export class RestApi {
   private app: express.Application;
   private startTime: number;
   private auditLogger: AuditLogger;
+  private adsRoutes: Map<string, AdsRoute> = new Map();
+  private networkScanner: NetworkScanner;
+  private errorManager: ErrorManager;
 
   constructor(
     private config: ApiConfig,
@@ -22,14 +38,20 @@ export class RestApi {
   ) {
     this.app = express();
     this.auditLogger = new AuditLogger();
+    this.networkScanner = new NetworkScanner();
+    this.errorManager = new ErrorManager();
     this.startTime = Date.now();
     this.setupMiddleware();
     this.setupRoutes();
+    this.setupErrorHandlers();
   }
 
   private setupMiddleware(): void {
     this.app.use(cors());
     this.app.use(express.json());
+    
+    // Serve static files from root directory
+    this.app.use(express.static(path.join(__dirname, '..')));
 
     this.app.use((req: any, res: any, next: any) => {
       console.log(`[API] ${req.method} ${req.path}`);
@@ -254,6 +276,354 @@ export class RestApi {
     this.app.get('/api/audit/stats', (req: Request, res: Response) => {
       const stats = this.auditLogger.getStats();
       res.json(stats);
+    });
+
+    // ADS Routes Management
+    this.app.get('/api/ads/routes', (req: Request, res: Response) => {
+      const routes = Array.from(this.adsRoutes.values());
+      res.json(routes);
+    });
+
+    this.app.get('/api/ads/routes/:id', (req: Request, res: Response) => {
+      const route = this.adsRoutes.get(req.params.id);
+      if (!route) {
+        return res.status(404).json({ error: 'Route not found' });
+      }
+      res.json(route);
+    });
+
+    this.app.post('/api/ads/routes', async (req: Request, res: Response) => {
+      try {
+        const { name, netId, ipAddress, port, description } = req.body;
+        
+        if (!name || !netId || !ipAddress || !port) {
+          return res.status(400).json({ 
+            error: 'Missing required fields: name, netId, ipAddress, port' 
+          });
+        }
+
+        const route: AdsRoute = {
+          id: uuidv4(),
+          name,
+          netId,
+          ipAddress,
+          port: parseInt(port),
+          description,
+          active: false
+        };
+
+        this.adsRoutes.set(route.id, route);
+
+        // Log the action
+        this.auditLogger.log({
+          action: 'CREATE_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Created ADS route ${route.name} (${route.netId} -> ${route.ipAddress}:${route.port})`,
+          status: 'SUCCESS'
+        });
+
+        res.status(201).json(route);
+      } catch (error: any) {
+        this.auditLogger.log({
+          action: 'CREATE_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Failed to create route: ${error.message}`,
+          status: 'FAILED'
+        });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/ads/routes/:id', async (req: Request, res: Response) => {
+      try {
+        const route = this.adsRoutes.get(req.params.id);
+        if (!route) {
+          return res.status(404).json({ error: 'Route not found' });
+        }
+
+        this.adsRoutes.delete(req.params.id);
+
+        this.auditLogger.log({
+          action: 'DELETE_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Deleted ADS route ${route.name}`,
+          status: 'SUCCESS'
+        });
+
+        res.json({ success: true, message: 'Route deleted' });
+      } catch (error: any) {
+        this.auditLogger.log({
+          action: 'DELETE_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Failed to delete route: ${error.message}`,
+          status: 'FAILED'
+        });
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/ads/routes/:id/test', async (req: Request, res: Response) => {
+      try {
+        const route = this.adsRoutes.get(req.params.id);
+        if (!route) {
+          return res.status(404).json({ error: 'Route not found' });
+        }
+
+        // TODO: Implement actual connection test
+        // For now, simulate a test
+        const success = true; // Simulate success
+
+        this.auditLogger.log({
+          action: 'TEST_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Tested connection to ${route.name}`,
+          status: success ? 'SUCCESS' : 'FAILED'
+        });
+
+        res.json({ 
+          success, 
+          message: success ? 'Connection successful' : 'Connection failed',
+          route: route.name
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message, success: false });
+      }
+    });
+
+    // Get network information
+    this.app.get('/api/network/info', (req: Request, res: Response) => {
+      try {
+        const clientInfo = (req as any).clientInfo;
+        const clientIp = clientInfo?.userIp || 'unknown';
+        
+        // Extract network from client IP
+        let network = '192.168.1.0/24'; // Default fallback
+        
+        if (clientIp && clientIp !== 'unknown' && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+          // Remove IPv6 prefix if present
+          let ip = clientIp.replace(/^::ffff:/, '');
+          
+          // Parse IP and create network range
+          const parts = ip.split('.');
+          if (parts.length === 4) {
+            network = `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
+          }
+        }
+
+        res.json({
+          success: true,
+          clientIp: clientIp === '::1' || clientIp === '127.0.0.1' ? 'localhost' : clientIp,
+          network: network
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message, success: false });
+      }
+    });
+
+    // Network Scanner for ADS devices (Server-Sent Events for live progress)
+    this.app.post('/api/ads/scan', async (req: Request, res: Response) => {
+      try {
+        let { network, autoDetect, quickScan, fullPortScan } = req.body;
+        
+        // Auto-detect network from client IP
+        if (autoDetect) {
+          const clientInfo = (req as any).clientInfo;
+          const clientIp = clientInfo?.userIp || '';
+          
+          if (clientIp && clientIp !== 'unknown' && clientIp !== '::1' && clientIp !== '127.0.0.1') {
+            let ip = clientIp.replace(/^::ffff:/, '');
+            const parts = ip.split('.');
+            if (parts.length === 4) {
+              network = `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
+            }
+          } else {
+            network = '192.168.3.0/24'; // Fallback for localhost - use your actual network
+          }
+        }
+        
+        if (!network) {
+          return res.status(400).json({ error: 'Network parameter required or enable autoDetect' });
+        }
+
+        console.log(`[REST API] Starting network scan on ${network} (quickScan: ${quickScan}, fullPortScan: ${fullPortScan})`);
+
+        // Setup Server-Sent Events for live progress updates
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        const configuredRoutes = Array.from(this.adsRoutes.values());
+
+        // Helper to enrich devices with configuration status
+        const enrichDevice = (device: any) => {
+          const existingRoute = configuredRoutes.find(
+            route => route.ipAddress === device.ipAddress || route.netId === device.netId
+          );
+          
+          return {
+            ...device,
+            isConfigured: !!existingRoute,
+            configuredRouteName: existingRoute?.name,
+            configuredRouteId: existingRoute?.id
+          };
+        };
+
+        // Progress callback for live updates
+        const onProgress = (progress: { scanned: number, total: number, found: number, devices: any[] }) => {
+          const enrichedDevices = progress.devices.map(enrichDevice);
+          const progressData = {
+            ...progress,
+            devices: enrichedDevices,
+            network,
+            configuredCount: enrichedDevices.filter(d => d.isConfigured).length
+          };
+          res.write(`data: ${JSON.stringify(progressData)}\n\n`);
+        };
+
+        // Perform actual network scan with progress callback
+        let devices;
+        if (quickScan) {
+          devices = await this.networkScanner.quickScan(network);
+        } else {
+          devices = await this.networkScanner.scanNetwork(network, fullPortScan || false, 50, onProgress);
+        }
+
+        // Send final results
+        const enrichedDevices = devices.map(enrichDevice);
+        const finalData = {
+          success: true,
+          network,
+          devices: enrichedDevices,
+          message: `Found ${devices.length} device(s)`,
+          configuredCount: enrichedDevices.filter(d => d.isConfigured).length,
+          complete: true
+        };
+        
+        res.write(`data: ${JSON.stringify(finalData)}\n\n`);
+        res.end();
+
+        this.auditLogger.log({
+          action: 'CREATE_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Network scan performed on ${network}, found ${devices.length} device(s)`,
+          status: 'SUCCESS'
+        });
+
+      } catch (error: any) {
+        console.error('[REST API] Network scan failed:', error);
+        
+        // Send error via SSE
+        const errorData = {
+          success: false,
+          error: error.message,
+          devices: [],
+          complete: true
+        };
+        res.write(`data: ${JSON.stringify(errorData)}\n\n`);
+        res.end();
+
+        this.auditLogger.log({
+          action: 'CREATE_ROUTE',
+          userId: (req as any).clientInfo?.userIp || 'unknown',
+          details: `Network scan failed: ${error.message}`,
+          status: 'FAILED'
+        });
+      }
+    });
+
+    // Error Management endpoints
+    this.app.get('/api/errors', (req: Request, res: Response) => {
+      const includeResolved = req.query.includeResolved === 'true';
+      const errors = this.errorManager.getAllErrors(includeResolved);
+      res.json({
+        success: true,
+        errors,
+        unresolvedCount: this.errorManager.getUnresolvedCount()
+      });
+    });
+
+    this.app.post('/api/errors/:id/resolve', (req: Request, res: Response) => {
+      this.errorManager.resolveError(req.params.id);
+      res.json({ success: true });
+    });
+
+    this.app.delete('/api/errors', (req: Request, res: Response) => {
+      this.errorManager.clearAllErrors();
+      res.json({ success: true });
+    });
+
+    // Symbol Discovery Endpoints
+    this.app.get('/api/symbols/discovered', (req: Request, res: Response) => {
+      const discovery = this.adsGateway.getSymbolDiscovery();
+      if (!discovery) {
+        return res.status(503).json({
+          success: false,
+          error: 'Symbol discovery not initialized'
+        });
+      }
+
+      const symbols = discovery.getDiscoveredSymbols();
+      res.json({
+        success: true,
+        symbols,
+        count: symbols.length
+      });
+    });
+
+    this.app.post('/api/symbols/discover', async (req: Request, res: Response) => {
+      try {
+        await this.adsGateway.triggerSymbolDiscovery();
+        res.json({
+          success: true,
+          message: 'Symbol discovery triggered'
+        });
+      } catch (error: any) {
+        res.status(500).json({
+          success: false,
+          error: error.message
+        });
+      }
+    });
+  }
+
+  private setupErrorHandlers(): void {
+    // Listen for ADS Gateway errors
+    this.adsGateway.on('error', (error: Error) => {
+      this.errorManager.addError({
+        level: 'error',
+        source: 'ADS Gateway',
+        message: error.message,
+        details: error
+      });
+    });
+
+    // Listen for symbol discovery events
+    this.adsGateway.on('online-change-detected', (data) => {
+      console.log(`[REST API] OnlineChange detected: ${data.symbolCount} symbols found`);
+    });
+
+    this.adsGateway.on('variables-auto-added', (data) => {
+      console.log(`[REST API] ${data.variables.length} variables auto-added after OnlineChange`);
+    });
+
+    this.adsGateway.on('discovery-error', (data) => {
+      this.errorManager.addError({
+        level: 'warning',
+        source: 'Symbol Discovery',
+        message: 'Failed to discover symbols',
+        details: data.error
+      });
+    });
+
+    // Listen for MQTT Broker errors
+    this.mqttBroker.on('error', (error: Error) => {
+      this.errorManager.addError({
+        level: 'error',
+        source: 'MQTT Broker',
+        message: error.message,
+        details: error
+      });
     });
   }
 

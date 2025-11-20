@@ -1,0 +1,25 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- MQTT Side (Left) - Red -->
+  <path d="M 8 20 L 8 44 L 20 44 L 20 32 L 14 32 L 14 26 L 20 26 L 20 20 Z" fill="#dc2626"/>
+  <circle cx="14" cy="20" r="3" fill="#dc2626"/>
+  <circle cx="14" cy="44" r="3" fill="#dc2626"/>
+  
+  <!-- ADS Side (Right) - Red -->
+  <path d="M 56 20 L 56 44 L 44 44 L 44 32 L 50 32 L 50 26 L 44 26 L 44 20 Z" fill="#dc2626"/>
+  <circle cx="50" cy="20" r="3" fill="#dc2626"/>
+  <circle cx="50" cy="44" r="3" fill="#dc2626"/>
+  
+  <!-- Bridge (Center) - Darker Red -->
+  <rect x="20" y="30" width="24" height="4" fill="#991b1b"/>
+  <circle cx="32" cy="32" r="6" fill="#991b1b"/>
+  
+  <!-- Data Flow Arrows -->
+  <path d="M 24 32 L 28 30 L 28 34 Z" fill="#ffffff"/>
+  <path d="M 40 32 L 36 30 L 36 34 Z" fill="#ffffff"/>
+  
+  <!-- Connection Lines -->
+  <line x1="20" y1="26" x2="26" y2="32" stroke="#dc2626" stroke-width="2"/>
+  <line x1="20" y1="38" x2="26" y2="32" stroke="#dc2626" stroke-width="2"/>
+  <line x1="44" y1="26" x2="38" y2="32" stroke="#dc2626" stroke-width="2"/>
+  <line x1="44" y1="38" x2="38" y2="32" stroke="#dc2626" stroke-width="2"/>
+</svg>

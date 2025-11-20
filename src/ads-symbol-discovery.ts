@@ -205,21 +205,21 @@ export class AdsSymbolDiscovery extends EventEmitter {
 
     // Mock-Implementierung mit realistischen Symbol-Namen
     const mockSymbols = [
-      { name: 'GVL.Motor.Speed', dataType: 'REAL', comment: 'Motor speed in RPM' },
-      { name: 'GVL.Motor.Running', dataType: 'BOOL', comment: 'Motor running status' },
-      { name: 'GVL.Motor.Current', dataType: 'REAL', comment: 'Motor current in A' },
-      { name: 'GVL.Sensor.Temperature', dataType: 'REAL', comment: 'Temperature sensor' },
-      { name: 'GVL.Sensor.Pressure', dataType: 'REAL', comment: 'Pressure sensor' },
-      { name: 'GVL.Sensor.Level', dataType: 'REAL', comment: 'Level sensor' },
-      { name: 'GVL.Valve.Position', dataType: 'REAL', comment: 'Valve position %' },
-      { name: 'GVL.Valve.Open', dataType: 'BOOL', comment: 'Valve open command' },
-      { name: 'GVL.Pump.Active', dataType: 'BOOL', comment: 'Pump active' },
-      { name: 'GVL.Pump.FlowRate', dataType: 'REAL', comment: 'Flow rate L/min' },
-      { name: 'GVL.Counter.ProductCount', dataType: 'DINT', comment: 'Product counter' },
-      { name: 'GVL.Counter.CycleTime', dataType: 'DINT', comment: 'Cycle time ms' },
-      { name: 'GVL.Status.ErrorCode', dataType: 'WORD', comment: 'Error code' },
-      { name: 'GVL.Status.Warning', dataType: 'BOOL', comment: 'Warning active' },
-      { name: 'GVL.Config.SetPoint', dataType: 'REAL', comment: 'Setpoint value' },
+      { name: 'Motor.Speed', dataType: 'REAL', comment: 'Motor speed in RPM' },
+      { name: 'Motor.Running', dataType: 'BOOL', comment: 'Motor running status' },
+      { name: 'Motor.Current', dataType: 'REAL', comment: 'Motor current in A' },
+      { name: 'Sensor.Temperature', dataType: 'REAL', comment: 'Temperature sensor' },
+      { name: 'Sensor.Pressure', dataType: 'REAL', comment: 'Pressure sensor' },
+      { name: 'Sensor.Level', dataType: 'REAL', comment: 'Level sensor' },
+      { name: 'Valve.Position', dataType: 'REAL', comment: 'Valve position %' },
+      { name: 'Valve.Open', dataType: 'BOOL', comment: 'Valve open command' },
+      { name: 'Pump.Active', dataType: 'BOOL', comment: 'Pump active' },
+      { name: 'Pump.FlowRate', dataType: 'REAL', comment: 'Flow rate L/min' },
+      { name: 'ProductCount', dataType: 'DINT', comment: 'Product counter' },
+      { name: 'CycleTime', dataType: 'DINT', comment: 'Cycle time ms' },
+      { name: 'ErrorCode', dataType: 'WORD', comment: 'Error code' },
+      { name: 'Warning', dataType: 'BOOL', comment: 'Warning active' },
+      { name: 'SetPoint', dataType: 'REAL', comment: 'Setpoint value' },
     ];
 
     const mockData = mockSymbols[index % mockSymbols.length];

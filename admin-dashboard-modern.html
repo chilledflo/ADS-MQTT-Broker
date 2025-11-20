@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MQTT-ADS Bridge - Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #dc2626;
+      --primary-dark: #991b1b;
+      --primary-light: #fee2e2;
+      --secondary: #f3f4f6;
+      --bg-light: #ffffff;
+      --bg-card: #ffffff;
+      --bg-gray: #f9fafb;
+      --text-primary: #111827;
+      --text-secondary: #6b7280;
+      --border: #e5e7eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --shadow: rgba(0, 0, 0, 0.1);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-gray);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      padding: 1rem 2rem;
+      box-shadow: 0 2px 8px var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      color: white;
+    }
+
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: white;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      font-size: 0.875rem;
+      backdrop-filter: blur(10px);
+    }
+
+    .status-label {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-value {
+      color: white;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Heartbeat Icon */
+    .heartbeat-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .heartbeat-icon {
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      transition: transform 0.2s;
+      animation: heartbeat 1.5s ease-in-out infinite;
+    }
+
+    .heartbeat-icon:hover {
+      transform: scale(1.1);
+    }
+
+    @keyframes heartbeat {
+      0%, 100% { transform: scale(1); }
+      10% { transform: scale(1.15); }
+      20% { transform: scale(1); }
+      30% { transform: scale(1.15); }
+      40% { transform: scale(1); }
+    }
+
+    /* System Status Dropdown */
+    .system-status-dropdown {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      min-width: 400px;
+      max-height: 500px;
+      overflow-y: auto;
+      display: none;
+      z-index: 1000;
+      animation: slideDown 0.2s ease-out;
+    }
+
+    .system-status-dropdown.active {
+      display: block;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .dropdown-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .dropdown-content {
+      padding: 1rem;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .status-row:last-child {
+      border-bottom: none;
+    }
+
+    .status-row-label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .status-row-value {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+      background: white;
+      padding: 1rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .nav-tab {
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-tab svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .nav-tab:hover {
+      background: var(--bg-gray);
+      color: var(--text-primary);
+    }
+
+    .nav-tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: white;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 2px 8px var(--shadow);
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px var(--shadow);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--primary);
+    }
+
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    /* Grid Layout */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 0.625rem 1.25rem;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 0.875rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--border);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--secondary);
+    }
+
+    .btn-danger {
+      background: var(--error);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.75rem;
+      background: white;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      transition: all 0.3s ease;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+
+    .form-select {
+      width: 100%;
+      padding: 0.75rem;
+      background: white;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+
+    /* Table */
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: var(--bg-gray);
+    }
+
+    th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      border-bottom: 2px solid var(--border);
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    tr:hover {
+      background: var(--bg-gray);
+    }
+
+    tbody tr {
+      transition: all 0.2s ease;
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .badge-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+
+    .badge-error {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--error);
+    }
+
+    /* ADS Route Browser */
+    .route-item {
+      background: white;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+
+    .route-item:hover {
+      border-color: var(--primary);
+      transform: translateX(4px);
+      box-shadow: 0 4px 8px var(--shadow);
+    }
+
+    .route-info {
+      flex: 1;
+    }
+
+    .route-name {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      color: var(--text-primary);
+      font-size: 1.1rem;
+    }
+
+    .route-details {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .route-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .scan-section {
+      background: var(--primary-light);
+      border: 2px dashed var(--primary);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .scan-controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .scan-input {
+      padding: 0.75rem;
+      border: 2px solid var(--primary);
+      border-radius: 8px;
+      font-size: 0.875rem;
+      min-width: 200px;
+    }
+
+    .scan-results {
+      margin-top: 1rem;
+      text-align: left;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 600px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+
+    .modal-close:hover {
+      background: var(--border);
+      color: var(--text-primary);
+    }
+
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+
+      .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .nav-tabs {
+        flex-wrap: nowrap;
+      }
+
+      .route-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+      }
+
+      .route-actions {
+        width: 100%;
+      }
+
+      .btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-gray);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+
+    code {
+      background: var(--bg-gray);
+      color: var(--primary);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+
+    /* Alert */
+    .alert {
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .alert-success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--success);
+      color: var(--success);
+    }
+
+    .alert-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--error);
+      color: var(--error);
+    }
+
+    .alert-warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">
+        <svg width="350" height="85" viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Golden gradients -->
+            <linearGradient id="primary-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#ffd700;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#ffa500;stop-opacity:1" />
+            </linearGradient>
+            <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#ffeb3b;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#ffc107;stop-opacity:1" />
+            </linearGradient>
+            <linearGradient id="sun-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#fff59d;stop-opacity:1" />
+              <stop offset="50%" style="stop-color:#ffd700;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#ff9800;stop-opacity:1" />
+            </linearGradient>
+            <radialGradient id="glow">
+              <stop offset="0%" style="stop-color:#ffd700;stop-opacity:0.9" />
+              <stop offset="100%" style="stop-color:#ffd700;stop-opacity:0" />
+            </radialGradient>
+            <!-- Sophisticated shadow -->
+            <filter id="drop-shadow">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+              <feOffset dx="0" dy="3" result="offsetblur"/>
+              <feComponentTransfer>
+                <feFuncA type="linear" slope="0.25"/>
+              </feComponentTransfer>
+              <feMerge>
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <filter id="inner-glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          
+          <!-- Sun King Badge -->
+          <g transform="translate(85, 85)" filter="url(#drop-shadow)">
+            <!-- Outer sun rays -->
+            <g opacity="0.8">
+              <path d="M 0,-65 L 4,-52 L -4,-52 Z" fill="url(#sun-grad)"/>
+              <path d="M 46,-46 L 52,-39 L 39,-39 Z" fill="url(#sun-grad)"/>
+              <path d="M 65,0 L 52,4 L 52,-4 Z" fill="url(#sun-grad)"/>
+              <path d="M 46,46 L 39,39 L 52,39 Z" fill="url(#sun-grad)"/>
+              <path d="M 0,65 L -4,52 L 4,52 Z" fill="url(#sun-grad)"/>
+              <path d="M -46,46 L -39,52 L -39,39 Z" fill="url(#sun-grad)"/>
+              <path d="M -65,0 L -52,-4 L -52,4 Z" fill="url(#sun-grad)"/>
+              <path d="M -46,-46 L -52,-39 L -39,-39 Z" fill="url(#sun-grad)"/>
+            </g>
+            
+            <!-- Golden circle -->
+            <circle cx="0" cy="0" r="48" fill="url(#primary-grad)" stroke="#ffd700" stroke-width="3"/>
+            <circle cx="0" cy="0" r="45" fill="none" stroke="rgba(255,235,59,0.4)" stroke-width="1.5"/>
+            
+            <!-- Inner decorative rings -->
+            <circle cx="0" cy="0" r="38" fill="none" stroke="rgba(255,215,0,0.3)" stroke-width="2"/>
+            <circle cx="0" cy="0" r="30" fill="none" stroke="rgba(255,215,0,0.2)" stroke-width="1.5"/>
+            
+            <!-- Sun King face -->
+            <circle cx="0" cy="0" r="25" fill="#ff9800" stroke="#ffd700" stroke-width="2"/>
+            
+            <!-- Crown -->
+            <path d="M -15,-25 L -10,-32 L -5,-28 L 0,-35 L 5,-28 L 10,-32 L 15,-25 L 12,-20 L -12,-20 Z" fill="#ffd700" stroke="#ff9800" stroke-width="1"/>
+            <circle cx="-10" cy="-32" r="2" fill="#fff59d"/>
+            <circle cx="0" cy="-35" r="2" fill="#fff59d"/>
+            <circle cx="10" cy="-32" r="2" fill="#fff59d"/>
+            
+            <!-- Eyes -->
+            <circle cx="-8" cy="-5" r="3" fill="#1e293b"/>
+            <circle cx="8" cy="-5" r="3" fill="#1e293b"/>
+            <circle cx="-7" cy="-6" r="1" fill="#ffffff"/>
+            <circle cx="9" cy="-6" r="1" fill="#ffffff"/>
+            
+            <!-- Smile -->
+            <path d="M -10,5 Q 0,12 10,5" stroke="#1e293b" stroke-width="2" fill="none" stroke-linecap="round"/>
+            
+            <!-- Activity pulse glow -->
+            <circle cx="0" cy="0" r="28" fill="url(#glow)" opacity="0.3">
+              <animate attributeName="r" values="28;35;28" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite"/>
+            </circle>
+            
+            <!-- Corner golden sparkles -->
+            <g opacity="0.9">
+              <path d="M -30,-30 L -28,-30 L -30,-28 L -30,-32 L -32,-30 Z" fill="#ffd700">
+                <animateTransform attributeName="transform" type="rotate" from="0 -30 -30" to="360 -30 -30" dur="4s" repeatCount="indefinite"/>
+              </path>
+              <path d="M 30,-30 L 32,-30 L 30,-28 L 30,-32 L 28,-30 Z" fill="#ffd700">
+                <animateTransform attributeName="transform" type="rotate" from="0 30 -30" to="360 30 -30" dur="4s" repeatCount="indefinite"/>
+              </path>
+              <path d="M -30,30 L -28,30 L -30,32 L -30,28 L -32,30 Z" fill="#ffd700">
+                <animateTransform attributeName="transform" type="rotate" from="0 -30 30" to="360 -30 30" dur="4s" repeatCount="indefinite"/>
+              </path>
+              <path d="M 30,30 L 32,30 L 30,32 L 30,28 L 28,30 Z" fill="#ffd700">
+                <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="4s" repeatCount="indefinite"/>
+              </path>
+            </g>
+          </g>
+          
+          <!-- Data flow visualization -->
+          <g transform="translate(160, 85)">
+            <!-- Streaming particles -->
+            <g opacity="0.9">
+              <circle cx="0" cy="-15" r="3" fill="#ffd700">
+                <animate attributeName="cx" from="0" to="120" dur="2.5s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.9;1" dur="2.5s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="0" cy="0" r="3" fill="#ffeb3b">
+                <animate attributeName="cx" from="0" to="120" begin="0.8s" dur="2.5s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.9;1" begin="0.8s" dur="2.5s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="0" cy="15" r="3" fill="#ffa500">
+                <animate attributeName="cx" from="0" to="120" begin="1.6s" dur="2.5s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.9;1" begin="1.6s" dur="2.5s" repeatCount="indefinite"/>
+              </circle>
+            </g>
+            
+            <!-- Connection lines -->
+            <line x1="0" y1="-15" x2="180" y2="-15" stroke="#e2e8f0" stroke-width="2" opacity="0.4" stroke-dasharray="5,5">
+              <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1s" repeatCount="indefinite"/>
+            </line>
+            <line x1="0" y1="0" x2="180" y2="0" stroke="#e2e8f0" stroke-width="2" opacity="0.4" stroke-dasharray="5,5">
+              <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1s" repeatCount="indefinite"/>
+            </line>
+            <line x1="0" y1="15" x2="180" y2="15" stroke="#e2e8f0" stroke-width="2" opacity="0.4" stroke-dasharray="5,5">
+              <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1s" repeatCount="indefinite"/>
+            </line>
+          </g>
+          
+          <!-- MQTT Cloud Icon -->
+          <g transform="translate(220, 85)" filter="url(#drop-shadow)">
+            <!-- Cloud shape -->
+            <ellipse cx="0" cy="0" rx="45" ry="30" fill="url(#primary-grad)" stroke="#ffd700" stroke-width="2.5"/>
+            <ellipse cx="-20" cy="-5" rx="25" ry="18" fill="url(#primary-grad)"/>
+            <ellipse cx="20" cy="-5" rx="28" ry="20" fill="url(#primary-grad)"/>
+            <ellipse cx="0" cy="0" rx="42" ry="28" fill="none" stroke="rgba(255,215,0,0.4)" stroke-width="1.5"/>
+            
+            <!-- Message queue lines -->
+            <g opacity="0.9">
+              <line x1="-20" y1="-8" x2="20" y2="-8" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="-15" y1="0" x2="25" y2="0" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="-18" y1="8" x2="22" y2="8" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+            
+            <!-- Publish/Subscribe indicators -->
+            <circle cx="-35" cy="0" r="6" fill="#ffeb3b" stroke="#ffffff" stroke-width="2">
+              <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="35" cy="0" r="6" fill="#ffeb3b" stroke="#ffffff" stroke-width="2">
+              <animate attributeName="opacity" values="0.4;1;0.4" dur="1.5s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+          
+          <!-- Modern Typography -->
+          <g transform="translate(300, 65)">
+            <!-- Main title with golden effect -->
+            <text x="0" y="30" font-family="'Segoe UI', 'Roboto', 'Inter', sans-serif" font-size="52" font-weight="800" fill="#ffd700" letter-spacing="1">
+              ADS
+            </text>
+            <text x="125" y="30" font-family="'Segoe UI', 'Roboto', 'Inter', sans-serif" font-size="52" font-weight="300" fill="#ffeb3b" letter-spacing="1">
+              ↔
+            </text>
+            <text x="180" y="30" font-family="'Segoe UI', 'Roboto', 'Inter', sans-serif" font-size="52" font-weight="800" fill="#ffd700" letter-spacing="1">
+              MQTT
+            </text>
+            
+            <!-- Subtitle -->
+            <text x="0" y="58" font-family="'Segoe UI', Arial, sans-serif" font-size="15" font-weight="500" fill="#ffeb3b" letter-spacing="2">
+              INDUSTRIAL BRIDGE
+            </text>
+            
+            <!-- Tech tags -->
+            <g transform="translate(0, 75)">
+              <rect x="0" y="0" width="90" height="20" rx="10" fill="rgba(255, 215, 0, 0.2)" stroke="#ffd700" stroke-width="1"/>
+              <text x="45" y="14" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="600" fill="#ffd700" text-anchor="middle">TwinCAT3</text>
+              
+              <rect x="100" y="0" width="80" height="20" rx="10" fill="rgba(255, 235, 59, 0.15)" stroke="#ffeb3b" stroke-width="1"/>
+              <text x="140" y="14" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="600" fill="#ffeb3b" text-anchor="middle">Real-Time</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="header-status">
+        <div class="status-item" id="error-indicator" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--error);">
+          <div>
+            <div class="status-label" style="color: var(--error);">⚠️ Errors</div>
+            <div class="status-value" style="color: var(--error);" id="error-count">0</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <span class="status-dot"></span>
+          <div>
+            <div class="status-label">Status</div>
+            <div class="status-value" id="connectionStatus">...</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">MQTT</div>
+            <div class="status-value" id="header-mqtt">0</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">Variables</div>
+            <div class="status-value" id="header-vars">0</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">Updates/sec</div>
+            <div class="status-value" id="header-updates-rate">0</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">Messages/sec</div>
+            <div class="status-value" id="header-messages-rate">0</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">ADS Routes</div>
+            <div class="status-value" id="header-routes">0/0</div>
+          </div>
+        </div>
+        <div class="status-item" id="symbol-discovery-indicator" style="display: none; background: rgba(16, 185, 129, 0.2); border: 1px solid var(--success);">
+          <div>
+            <div class="status-label" style="color: var(--success);">🔍 Symbols</div>
+            <div class="status-value" style="color: var(--success);" id="symbol-count">0</div>
+          </div>
+        </div>
+        <div class="status-item">
+          <div>
+            <div class="status-label">Uptime</div>
+            <div class="status-value" id="header-uptime">0s</div>
+          </div>
+        </div>
+        <div class="heartbeat-container">
+          <svg class="heartbeat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="heartbeat-icon" onclick="toggleSystemStatus()">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            <path d="M3.5 12h3l2-3 2 6 2-3h3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="system-status-dropdown" id="system-status-dropdown">
+            <div class="dropdown-header">
+              <span>System Status</span>
+              <span style="cursor: pointer;" onclick="toggleSystemStatus()">✕</span>
+            </div>
+            <div class="dropdown-content" id="system-status-content">
+              <div class="status-row">
+                <span class="status-row-label">MQTT Broker</span>
+                <span class="status-row-value"><span class="badge badge-warning">Loading...</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="container">
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('routes')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 20h5v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6 3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM7 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+        </svg>
+        ADS Routes
+      </button>
+      <button class="nav-tab" onclick="switchTab('variables')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3l-4 4z"/>
+        </svg>
+        Payload
+      </button>
+      <button class="nav-tab" onclick="switchTab('audit')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/>
+        </svg>
+        Audit Logs
+      </button>
+    </div>
+
+    <!-- Dashboard Tab (removed) -->
+    <div id="dashboard-tab" class="tab-content" style="display: none;">
+      <!-- Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Active Variables</div>
+          <div class="stat-value" id="stat-variables">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">MQTT Clients</div>
+          <div class="stat-value" id="stat-clients">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Messages/sec</div>
+          <div class="stat-value" id="stat-messages">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Uptime</div>
+          <div class="stat-value" id="stat-uptime">0s</div>
+        </div>
+      </div>
+
+      <!-- System Status -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">System Status</h2>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="system-status">
+              <tr>
+                <td>MQTT Broker</td>
+                <td><span class="badge badge-warning">Loading...</span></td>
+                <td>-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADS Routes Tab -->
+    <div id="routes-tab" class="tab-content active">
+      <!-- Network Scanner -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🔍 Network Scanner</h2>
+        </div>
+        <div class="scan-section">
+          <h3 style="margin-bottom: 0.5rem; color: var(--primary);">Scan for ADS Devices</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            <span id="network-info">Scanning your network or enter specific IP/hostname</span>
+          </p>
+          <div class="scan-controls">
+            <div style="flex: 1; display: flex; gap: 0.5rem;">
+              <input 
+                type="text" 
+                id="target-input" 
+                placeholder="192.168.1.100 or hostname (leave empty for network scan)" 
+                style="flex: 1; padding: 0.75rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.875rem;"
+              />
+              <button class="btn btn-primary" onclick="startScan()" id="scanBtn">
+                <span>🔍</span>
+                <span>Scan</span>
+              </button>
+            </div>
+          </div>
+          <div id="scan-results" class="scan-results"></div>
+        </div>
+      </div>
+
+      <!-- Routes List -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Configured Routes</h2>
+          <button class="btn btn-primary" onclick="openAddRouteModal()">
+            <span>➕</span>
+            <span>Add Route</span>
+          </button>
+        </div>
+        <div id="routes-list">
+          <!-- Routes will be loaded here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Variables Tab -->
+    <div id="variables-tab" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🎯 Payload Browser</h2>
+          <button class="btn btn-primary" onclick="openAddVariableModal()">
+            <span>➕</span>
+            <span>Add Variable</span>
+          </button>
+        </div>
+        <div id="payload-tree" style="padding: 1rem;">
+          <!-- Payload structure will be loaded here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit Logs Tab -->
+    <div id="audit-tab" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Audit Logs</h2>
+          <button class="btn btn-secondary" onclick="loadAuditLogs()">
+            <span>🔄</span>
+            <span>Refresh</span>
+          </button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>Resource</th>
+                <th>User</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="audit-logs">
+              <!-- Logs will be loaded here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Route Modal -->
+  <div id="addRouteModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Add ADS Route</h3>
+        <button class="modal-close" onclick="closeModal('addRouteModal')">×</button>
+      </div>
+      <form onsubmit="addRoute(event)">
+        <div class="form-group">
+          <label class="form-label">Route Name</label>
+          <input type="text" class="form-input" name="name" placeholder="e.g., PLC-1" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ADS NetID</label>
+          <input type="text" class="form-input" name="netId" placeholder="e.g., 192.168.1.100.1.1" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">IP Address</label>
+          <input type="text" class="form-input" name="ipAddress" placeholder="e.g., 192.168.1.100" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ADS Port</label>
+          <input type="number" class="form-input" name="port" placeholder="851" value="851" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-input" name="description" placeholder="Optional description">
+        </div>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('addRouteModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Route</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Variable Modal -->
+  <div id="addVariableModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Variable</h3>
+        <button class="modal-close" onclick="closeModal('addVariableModal')">×</button>
+      </div>
+      <form onsubmit="addVariable(event)">
+        <div class="form-group">
+          <label class="form-label">Variable Name</label>
+          <input type="text" class="form-input" name="name" placeholder="e.g., Motor.Speed" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ADS Path</label>
+          <input type="text" class="form-input" name="path" placeholder="e.g., GVL.Motor.Speed" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Type</label>
+          <select class="form-select" name="type" required>
+            <option value="BOOL">BOOL</option>
+            <option value="BYTE">BYTE</option>
+            <option value="WORD">WORD</option>
+            <option value="DWORD">DWORD</option>
+            <option value="INT">INT</option>
+            <option value="DINT">DINT</option>
+            <option value="REAL">REAL</option>
+            <option value="LREAL">LREAL</option>
+            <option value="STRING">STRING</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Poll Interval (ms)</label>
+          <input type="number" class="form-input" name="pollInterval" value="1000" min="100" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">MQTT Topic</label>
+          <input type="text" class="form-input" name="mqttTopic" placeholder="e.g., plc/motor/speed" required>
+        </div>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('addVariableModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Variable</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    let currentTab = 'dashboard';
+    let refreshInterval = null;
+
+    // Tab Switching
+    function switchTab(tabName) {
+      currentTab = tabName;
+      document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(`${tabName}-tab`).classList.add('active');
+
+      // Load data for the tab
+      loadTabData(tabName);
+    }
+
+    function loadTabData(tabName) {
+      switch(tabName) {
+        case 'dashboard':
+          loadDashboard();
+          break;
+        case 'routes':
+          loadRoutes();
+          break;
+        case 'variables':
+          loadVariables();
+          break;
+        case 'audit':
+          loadAuditLogs();
+          break;
+      }
+    }
+
+    // Modal Functions
+    function openAddRouteModal() {
+      document.getElementById('addRouteModal').classList.add('active');
+    }
+
+    function openAddVariableModal() {
+      document.getElementById('addVariableModal').classList.add('active');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('active');
+    }
+
+    // Toggle System Status Dropdown
+    function toggleSystemStatus() {
+      const dropdown = document.getElementById('system-status-dropdown');
+      dropdown.classList.toggle('active');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+      const container = document.querySelector('.heartbeat-container');
+      const dropdown = document.getElementById('system-status-dropdown');
+      
+      if (container && !container.contains(event.target) && dropdown) {
+        dropdown.classList.remove('active');
+      }
+    });
+
+    // Rate tracking
+    let lastMessagesPublished = 0;
+    let lastUpdateCount = 0;
+    let lastRateUpdate = Date.now();
+
+    // Load Dashboard (now only for header status)
+    async function loadDashboard() {
+      try {
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+
+        // Load routes for header
+        const routesResponse = await fetch(`${API_BASE}/api/ads/routes`);
+        const routes = await routesResponse.json();
+        const onlineRoutes = routes.filter(r => r.active).length;
+        const totalRoutes = routes.length;
+
+        // Calculate rates
+        const now = Date.now();
+        const timeDiff = (now - lastRateUpdate) / 1000; // seconds
+        
+        const currentMessages = data.mqtt?.messagesPublished || 0;
+        const currentUpdates = data.ads?.updateCount || 0;
+        
+        let messagesRate = 0;
+        let updatesRate = 0;
+        
+        if (timeDiff > 0 && lastMessagesPublished > 0) {
+          messagesRate = Math.round((currentMessages - lastMessagesPublished) / timeDiff);
+          updatesRate = Math.round((currentUpdates - lastUpdateCount) / timeDiff);
+        }
+        
+        lastMessagesPublished = currentMessages;
+        lastUpdateCount = currentUpdates;
+        lastRateUpdate = now;
+
+        // Update header status
+        document.getElementById('connectionStatus').textContent = 'Online';
+        document.getElementById('header-mqtt').textContent = data.mqtt?.clients || 0;
+        document.getElementById('header-vars').textContent = data.variables || 0;
+        document.getElementById('header-routes').textContent = `${onlineRoutes}/${totalRoutes}`;
+        document.getElementById('header-uptime').textContent = formatUptime(data.uptime || 0);
+        document.getElementById('header-updates-rate').textContent = updatesRate;
+        document.getElementById('header-messages-rate').textContent = messagesRate;
+
+        // Update system status dropdown
+        const statusHtml = `
+          <div class="status-row">
+            <span class="status-row-label">MQTT Broker</span>
+            <span class="status-row-value"><span class="badge badge-success">Online</span></span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Port</span>
+            <span class="status-row-value">${data.mqtt?.port || 1883}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Connected Clients</span>
+            <span class="status-row-value">${data.mqtt?.clients || 0}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Messages Published</span>
+            <span class="status-row-value">${data.mqtt?.messagesPublished || 0}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">ADS Gateway</span>
+            <span class="status-row-value"><span class="badge ${data.ads?.connected ? 'badge-success' : 'badge-warning'}">
+              ${data.ads?.connected ? 'Connected' : 'Mock Mode'}
+            </span></span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">ADS Target</span>
+            <span class="status-row-value">${data.ads?.target || 'N/A'}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">REST API</span>
+            <span class="status-row-value"><span class="badge badge-success">Online</span></span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">API Port</span>
+            <span class="status-row-value">${window.location.port || 8080}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Variables</span>
+            <span class="status-row-value">${data.variables || 0}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Uptime</span>
+            <span class="status-row-value">${formatUptime(data.uptime || 0)}</span>
+          </div>
+        `;
+        document.getElementById('system-status-content').innerHTML = statusHtml;
+      } catch (error) {
+        console.error('Failed to load dashboard:', error);
+        document.getElementById('connectionStatus').textContent = 'Error';
+      }
+    }
+
+    // Load Routes
+    async function loadRoutes() {
+      try {
+        const response = await fetch(`${API_BASE}/api/ads/routes`);
+        const routes = await response.json();
+
+        const routesList = document.getElementById('routes-list');
+        if (routes.length === 0) {
+          routesList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No routes configured. Click "Add Route" to create your first ADS connection.</p>';
+          return;
+        }
+
+        routesList.innerHTML = routes.map(route => `
+          <div class="route-item">
+            <div class="route-info">
+              <div class="route-name">${route.name}</div>
+              <div class="route-details">
+                ${route.netId} → ${route.ipAddress}:${route.port}
+                ${route.description ? `<br><small>${route.description}</small>` : ''}
+              </div>
+            </div>
+            <div class="route-actions">
+              <button class="btn btn-secondary" onclick="testRoute('${route.id}')">Test</button>
+              <button class="btn btn-danger" onclick="deleteRoute('${route.id}')">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load routes:', error);
+        document.getElementById('routes-list').innerHTML = '<div class="alert alert-error">Failed to load routes</div>';
+      }
+    }
+
+    // Load Payload with structure support
+    async function loadVariables() {
+      try {
+        console.log('[Dashboard] Loading variables...');
+        const response = await fetch(`${API_BASE}/api/variables`);
+        const variables = await response.json();
+        console.log('[Dashboard] Received variables:', variables.length, variables);
+
+        const container = document.getElementById('payload-tree');
+        if (variables.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No variables configured</p>';
+          return;
+        }
+
+        // Group variables by structure (path segments)
+        const tree = {};
+        variables.forEach(v => {
+          // Prüfe ob es eine echte Struktur ist (hat isStruct Property)
+          if (v.isStruct && v.members) {
+            // Echte Struktur mit Members
+            tree[v.path] = { isStruct: true, members: v.members };
+          } else {
+            // Normale Variable (auch wenn Name Punkte enthält wie GVL.Motor.Speed)
+            tree[v.path] = { isStruct: false, variable: v };
+          }
+        });
+
+        // Render tree with header
+        const hasStructures = Object.values(tree).some(item => item.isStruct);
+        
+        let html = '';
+        
+        // Add table header
+        html += `
+          <div style="padding: 0.5rem 0.75rem; display: grid; grid-template-columns: 1.5fr 2.5fr 2fr 1fr 1.5fr 1fr 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.85em; font-weight: 600; color: var(--primary); border-bottom: 2px solid var(--primary); margin-bottom: 1rem;">
+            <div>Name</div>
+            <div>MQTT Topic</div>
+            <div>ADS Path</div>
+            <div>Type</div>
+            <div>Value</div>
+            <div>Rate</div>
+            <div>Last Update</div>
+            <div>Actions</div>
+          </div>
+        `;
+        
+        // Render variables
+        html += Object.keys(tree).sort().map(key => {
+          const item = tree[key];
+          if (item.isStruct) {
+            return `
+              <div class="payload-struct" style="margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+                <div class="payload-struct-header" onclick="toggleStruct('${key}')" style="padding: 1rem; background: rgba(255,255,255,0.05); cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                  <span id="struct-icon-${key}" style="font-size: 1.2em;">▶</span>
+                  <strong style="color: var(--primary);">${key}</strong>
+                  <span class="badge badge-info" style="margin-left: 0.5rem;">${item.members.length} members</span>
+                </div>
+                <div id="struct-content-${key}" style="display: none; padding: 0.5rem 1rem;">
+                  ${item.members.map(m => `
+                    <div style="padding: 0.75rem; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1.5fr 2.5fr 2fr 1fr 1.5fr 1fr 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.9em;">
+                      <div><strong>${m.name.split('.').pop()}</strong></div>
+                      <div><code style="color: var(--primary-light); font-size: 0.85em;">${m.mqttTopic}</code></div>
+                      <div><code style="color: var(--primary-light);">${m.path}</code></div>
+                      <div><span class="badge badge-success">${m.type}</span></div>
+                      <div id="value-${m.id}" style="font-family: monospace; color: #fbbf24;">-</div>
+                      <div id="rate-${m.id}" style="color: var(--text-secondary); font-size: 0.85em;">0µs</div>
+                      <div id="lastupdate-${m.id}" style="color: var(--text-secondary); font-size: 0.8em;">-</div>
+                      <div><button class="btn btn-danger" onclick="deleteVariable('${m.id}')">Delete</button></div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          } else {
+            const v = item.variable;
+            return `
+              <div style="padding: 0.75rem; margin-bottom: 0.5rem; border: 1px solid var(--border); border-radius: 8px; display: grid; grid-template-columns: 1.5fr 2.5fr 2fr 1fr 1.5fr 1fr 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.9em;">
+                <div><strong>${v.name.split('.').pop()}</strong></div>
+                <div><code style="color: var(--primary-light); font-size: 0.85em;">${v.mqttTopic}</code></div>
+                <div><code style="color: var(--primary-light);">${v.path}</code></div>
+                <div><span class="badge badge-success">${v.type}</span></div>
+                <div id="value-${v.id}" style="font-family: monospace; color: #fbbf24;">-</div>
+                <div id="rate-${v.id}" style="color: var(--text-secondary); font-size: 0.85em;">0µs</div>
+                <div id="lastupdate-${v.id}" style="color: var(--text-secondary); font-size: 0.8em;">-</div>
+                <div><button class="btn btn-danger" onclick="deleteVariable('${v.id}')">Delete</button></div>
+              </div>
+            `;
+          }
+        }).join('');
+        
+        container.innerHTML = html;
+
+        // Load and display topics (optional - only if element exists)
+        const topics = [...new Set(variables.map(v => v.mqttTopic))].sort();
+        const topicsList = document.getElementById('mqtt-topics-list');
+        if (topicsList) {
+          if (topics.length > 0) {
+            topicsList.innerHTML = topics.map(topic => `
+              <div style="padding: 0.5rem 1rem; background: rgba(251,191,36,0.1); border: 1px solid #fbbf24; border-radius: 6px;">
+                <code style="color: #fbbf24; font-size: 0.85em;">${topic}</code>
+              </div>
+            `).join('');
+          } else {
+            topicsList.innerHTML = '<span style="color: var(--text-secondary);">No topics available</span>';
+          }
+        }
+
+        // Start real-time updates
+        console.log('[Dashboard] Rendering complete, starting real-time updates');
+        startPayloadUpdates();
+      } catch (error) {
+        console.error('[Dashboard] Failed to load variables:', error);
+      }
+    }
+
+    // Real-time payload updates
+    let payloadUpdateInterval = null;
+    const payloadStats = {};
+
+    function startPayloadUpdates() {
+      if (payloadUpdateInterval) clearInterval(payloadUpdateInterval);
+      
+      payloadUpdateInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`${API_BASE}/api/variables`);
+          const variables = await response.json();
+          
+          const now = Date.now();
+          
+          variables.forEach(v => {
+            const valueEl = document.getElementById(`value-${v.id}`);
+            const rateEl = document.getElementById(`rate-${v.id}`);
+            const lastUpdateEl = document.getElementById(`lastupdate-${v.id}`);
+            
+            if (!valueEl) {
+              console.log(`[Dashboard] Element not found: value-${v.id} for variable ${v.name}`);
+            }
+            
+            if (valueEl && v.value !== undefined) {
+              valueEl.textContent = typeof v.value === 'object' ? JSON.stringify(v.value) : v.value;
+            } else if (valueEl && v.value === undefined) {
+              console.log(`[Dashboard] No value for ${v.name} (${v.id})`);
+            }
+            
+            if (rateEl && lastUpdateEl) {
+              if (!payloadStats[v.id]) {
+                payloadStats[v.id] = { lastValue: v.value, lastUpdate: now, updateCount: 0 };
+              }
+              
+              const stats = payloadStats[v.id];
+              
+              // Check if value changed
+              if (stats.lastValue !== v.value) {
+                stats.updateCount++;
+                stats.lastValue = v.value;
+                stats.lastUpdate = now;
+              }
+              
+              // Calculate rate in microseconds (µs)
+              const timeDiff = (now - stats.lastUpdate);
+              const rateUs = timeDiff > 0 && timeDiff < 5000 ? (timeDiff / stats.updateCount).toFixed(0) : '0';
+              rateEl.textContent = `${rateUs}µs`;
+              
+              // Show last update time
+              const secondsAgo = Math.floor(timeDiff);
+              if (secondsAgo < 60) {
+                lastUpdateEl.textContent = `${secondsAgo}s ago`;
+              } else {
+                lastUpdateEl.textContent = `${Math.floor(secondsAgo / 60)}m ago`;
+              }
+            }
+          });
+        } catch (error) {
+          console.error('Failed to update payload:', error);
+        }
+      }, 1000);
+    }
+
+    function stopPayloadUpdates() {
+      if (payloadUpdateInterval) {
+        clearInterval(payloadUpdateInterval);
+        payloadUpdateInterval = null;
+      }
+    }
+
+    // Toggle structure expand/collapse
+    function toggleStruct(structName) {
+      const content = document.getElementById(`struct-content-${structName}`);
+      const icon = document.getElementById(`struct-icon-${structName}`);
+      if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '▼';
+      } else {
+        content.style.display = 'none';
+        icon.textContent = '▶';
+      }
+    }
+
+    // Load MQTT Info
+    async function loadMqttInfo() {
+      try {
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+
+        // Load topics
+        const topicsDiv = document.getElementById('mqtt-topics');
+        try {
+          const varsResponse = await fetch(`${API_BASE}/api/variables`);
+          const variables = await varsResponse.json();
+          const topics = [...new Set(variables.map(v => v.mqttTopic))].sort();
+          
+          if (topics.length === 0) {
+            topicsDiv.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">No topics available</p>';
+          } else {
+            topicsDiv.innerHTML = `
+              <div style="padding: 1rem;">
+                ${topics.map(topic => `
+                  <div style="padding: 0.75rem; margin-bottom: 0.5rem; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid var(--primary);">
+                    <code style="color: var(--primary-light); font-size: 0.9em;">${topic}</code>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+        } catch (error) {
+          topicsDiv.innerHTML = '<p style="color: var(--error); padding: 1rem;">Failed to load topics</p>';
+        }
+
+        const clientsDiv = document.getElementById('mqtt-clients');
+        const clients = data.mqtt?.clientsList || [];
+        if (clients.length === 0) {
+          clientsDiv.innerHTML = '<p style="color: var(--text-secondary);">No clients connected</p>';
+        } else {
+          clientsDiv.innerHTML = clients.map(c => `
+            <div style="padding: 0.5rem; border-bottom: 1px solid var(--border);">
+              <strong>${c}</strong>
+            </div>
+          `).join('');
+        }
+
+        const subsDiv = document.getElementById('mqtt-subscriptions');
+        const subs = data.mqtt?.subscriptionsList || [];
+        if (subs.length === 0) {
+          subsDiv.innerHTML = '<p style="color: var(--text-secondary);">No active subscriptions</p>';
+        } else {
+          subsDiv.innerHTML = subs.map(s => `
+            <div style="padding: 0.5rem; border-bottom: 1px solid var(--border);">
+              <code style="color: var(--primary-light);">${s}</code>
+            </div>
+          `).join('');
+        }
+      } catch (error) {
+        console.error('Failed to load MQTT info:', error);
+      }
+    }
+
+    // Load Audit Logs
+    async function loadAuditLogs() {
+      try {
+        const response = await fetch(`${API_BASE}/api/audit/logs?limit=50`);
+        const logs = await response.json();
+
+        const tbody = document.getElementById('audit-logs');
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No audit logs</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = logs.map(log => `
+          <tr>
+            <td>${new Date(log.timestamp).toLocaleString()}</td>
+            <td><span class="badge badge-success">${log.action}</span></td>
+            <td>${log.resource}</td>
+            <td>${log.userId || 'System'}</td>
+            <td><span class="badge ${log.success ? 'badge-success' : 'badge-error'}">
+              ${log.success ? 'Success' : 'Failed'}
+            </span></td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load audit logs:', error);
+      }
+    }
+
+    // Add Route
+    async function addRoute(event) {
+      event.preventDefault();
+      const formData = new FormData(event.target);
+      const route = {
+        name: formData.get('name'),
+        netId: formData.get('netId'),
+        ipAddress: formData.get('ipAddress'),
+        port: parseInt(formData.get('port')),
+        description: formData.get('description')
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/ads/routes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(route)
+        });
+
+        if (response.ok) {
+          closeModal('addRouteModal');
+          event.target.reset();
+          loadRoutes();
+        } else {
+          alert('Failed to add route');
+        }
+      } catch (error) {
+        console.error('Failed to add route:', error);
+        alert('Error adding route');
+      }
+    }
+
+    // Add Variable
+    async function addVariable(event) {
+      event.preventDefault();
+      const formData = new FormData(event.target);
+      const variable = {
+        name: formData.get('name'),
+        path: formData.get('path'),
+        type: formData.get('type'),
+        pollInterval: parseInt(formData.get('pollInterval')),
+        mqttTopic: formData.get('mqttTopic')
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/variables`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(variable)
+        });
+
+        if (response.ok) {
+          closeModal('addVariableModal');
+          event.target.reset();
+          loadVariables();
+        } else {
+          alert('Failed to add variable');
+        }
+      } catch (error) {
+        console.error('Failed to add variable:', error);
+        alert('Error adding variable');
+      }
+    }
+
+    // Delete Variable
+    async function deleteVariable(id) {
+      if (!confirm('Are you sure you want to delete this variable?')) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/variables/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          loadVariables();
+        } else {
+          alert('Failed to delete variable');
+        }
+      } catch (error) {
+        console.error('Failed to delete variable:', error);
+        alert('Error deleting variable');
+      }
+    }
+
+    // Delete Route
+    async function deleteRoute(id) {
+      if (!confirm('Are you sure you want to delete this route?')) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/ads/routes/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          loadRoutes();
+        } else {
+          alert('Failed to delete route');
+        }
+      } catch (error) {
+        console.error('Failed to delete route:', error);
+        alert('Error deleting route');
+      }
+    }
+
+    // Test Route
+    async function testRoute(id) {
+      try {
+        const response = await fetch(`${API_BASE}/api/ads/routes/${id}/test`, {
+          method: 'POST'
+        });
+        const result = await response.json();
+        alert(result.success ? 'Connection successful!' : `Connection failed: ${result.error}`);
+      } catch (error) {
+        console.error('Failed to test route:', error);
+        alert('Error testing route');
+      }
+    }
+
+    // Detect Network
+    async function detectNetwork() {
+      try {
+        const response = await fetch(`${API_BASE}/api/network/info`);
+        const data = await response.json();
+        
+        if (data.network) {
+          document.getElementById('network-info').innerHTML = `
+eige            Scan network or enter IP/hostname directly - Ports 800-1000 (Full ADS/TwinCAT scan)
+          `;
+          return data.network;
+        }
+      } catch (error) {
+        console.error('Failed to detect network:', error);
+      }
+      return null;
+    }
+
+    // Network Scanner with live progress (Server-Sent Events)
+    let currentEventSource = null;
+    
+    async function startScan() {
+      const scanBtn = document.getElementById('scanBtn');
+      const targetInput = document.getElementById('target-input');
+      const resultsDiv = document.getElementById('scan-results');
+      const target = targetInput.value.trim();
+
+      // Close previous event source if exists
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+
+      scanBtn.disabled = true;
+      scanBtn.innerHTML = '<span class="spinner"></span><span>Scanning...</span>';
+      
+      resultsDiv.innerHTML = `
+        <div class="alert alert-warning">
+          <div>Scanning ${target || 'your network'} for ADS/TwinCAT devices (ports 800-900)...</div>
+          <div id="scan-progress" style="margin-top: 0.5rem;">
+            <div style="background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden;">
+              <div id="progress-bar" style="background: var(--gold); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+            <small id="progress-text" style="margin-top: 0.25rem; display: block;">Starting scan...</small>
+          </div>
+        </div>
+        <div id="scan-devices-live"></div>
+      `;
+
+      try {
+        const body = target 
+          ? { network: target, fullPortScan: true }
+          : { autoDetect: true, fullPortScan: true };
+
+        // Create EventSource for Server-Sent Events - use POST via fetch then EventSource
+        // Note: EventSource only supports GET, so we'll use fetch with streaming
+        const response = await fetch(`${API_BASE}/api/ads/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // Read SSE stream
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = JSON.parse(line.substring(6));
+              handleScanProgress(data);
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('Scan failed:', error);
+        resultsDiv.innerHTML = '<div class="alert alert-error">❌ Scan failed: ' + error.message + '</div>';
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.innerHTML = '<span>🔍</span><span>Scan</span>';
+      }
+    }
+
+    // Handle live scan progress updates
+    function handleScanProgress(data) {
+      const progressBar = document.getElementById('progress-bar');
+      const progressText = document.getElementById('progress-text');
+      const devicesLive = document.getElementById('scan-devices-live');
+
+      if (data.complete) {
+        // Scan complete - show final results
+        if (data.success === false) {
+          document.getElementById('scan-results').innerHTML = '<div class="alert alert-error">❌ Scan failed: ' + (data.error || 'Unknown error') + '</div>';
+          return;
+        }
+
+        const result = data;
+        if (result.devices && result.devices.length > 0) {
+          progressText.textContent = `✅ Scan complete! Found ${result.devices.length} device(s)`;
+          progressBar.style.width = '100%';
+        } else {
+          progressText.textContent = `⚠️ Scan complete - no devices found`;
+          progressBar.style.width = '100%';
+        }
+        return;
+      }
+
+      // Live progress update
+      if (data.scanned !== undefined && data.total !== undefined) {
+        const percentage = Math.round((data.scanned / data.total) * 100);
+        progressBar.style.width = percentage + '%';
+        progressText.textContent = `${data.scanned}/${data.total} hosts scanned, ${data.found || 0} device(s) found`;
+      }
+
+      // Update live device list
+      if (data.devices && data.devices.length > 0) {
+        // Filter out high port numbers (48xxx) - only show standard ADS ports (800-900)
+        const filteredDevices = data.devices.filter(d => d.port < 10000);
+        
+        if (filteredDevices.length === 0) {
+          return; // Don't show table if no relevant devices
+        }
+
+        let html = `
+          <table class="data-table" style="width: 100%; margin-top: 1rem; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <thead>
+              <tr style="background: linear-gradient(135deg, var(--primary) 0%, var(--gold) 100%); color: white;">
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Status</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Hostname</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">ADS Port</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Runtime</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">IP Address</th>
+                <th style="padding: 1rem; text-align: left; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">NetID</th>
+                <th style="padding: 1rem; text-align: center; font-weight: 600; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        filteredDevices.forEach((device, index) => {
+          const isConfigured = device.isConfigured;
+          const statusIcon = isConfigured ? '✅' : '🟢';
+          const statusText = isConfigured ? 'Configured' : 'New';
+          const hostname = device.hostname || device.name || 'Unknown';
+          const runtime = device.runtime || 'N/A';
+          const bgColor = index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'transparent';
+          
+          html += `
+            <tr style="background: ${bgColor}; transition: all 0.2s;" onmouseover="this.style.background='rgba(212, 175, 55, 0.1)'" onmouseout="this.style.background='${bgColor}'">
+              <td style="padding: 1rem; border-top: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <span style="font-size: 1.2rem;">${statusIcon}</span>
+                  <span style="font-size: 0.875rem; color: ${isConfigured ? 'var(--success)' : 'var(--gold)'}; font-weight: 500;">${statusText}</span>
+                </div>
+              </td>
+              <td style="padding: 1rem; border-top: 1px solid var(--border);">
+                <div>
+                  <strong style="font-size: 0.95rem; color: var(--text);">${hostname}</strong>
+                  ${device.systemInfo ? '<div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">' + device.systemInfo + '</div>' : ''}
+                </div>
+              </td>
+              <td style="padding: 1rem; border-top: 1px solid var(--border);">
+                <span style="display: inline-block; background: linear-gradient(135deg, var(--primary), var(--gold)); color: white; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.95rem; font-family: 'Consolas', 'Monaco', monospace;">${device.port || 851}</span>
+              </td>
+              <td style="padding: 1rem; border-top: 1px solid var(--border);">
+                <span style="font-weight: 500; color: var(--gold); font-size: 0.9rem;">${runtime}</span>
+              </td>
+              <td style="padding: 1rem; border-top: 1px solid var(--border);">
+                <code style="background: rgba(0,0,0,0.2); padding: 0.35rem 0.65rem; border-radius: 4px; font-size: 0.875rem; color: var(--text);">${device.ipAddress}</code>
+              </td>
+              <td style="padding: 1rem; border-top: 1px solid var(--border);">
+                <code style="font-size: 0.85rem; color: var(--text-secondary);">${device.netId || 'N/A'}</code>
+              </td>
+              <td style="padding: 1rem; border-top: 1px solid var(--border); text-align: center;">
+                ${!isConfigured ? `
+                  <button class="btn btn-primary" style="padding: 0.6rem 1.2rem; font-weight: 500; border-radius: 6px; background: linear-gradient(135deg, var(--primary), var(--gold)); border: none; color: white; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3);" 
+                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(212, 175, 55, 0.4)'"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 6px rgba(212, 175, 55, 0.3)'"
+                    onclick="addScannedDevice('${device.netId}', '${device.ipAddress}', ${device.port || 851}, '${(hostname).replace(/'/g, "\\'")}')">
+                    ➕ Add Route
+                  </button>
+                ` : `
+                  <span style="color: var(--success); font-size: 0.875rem; font-weight: 500;">✓ Connected</span>
+                `}
+              </td>
+            </tr>
+          `;
+        });
+        
+        html += '</tbody></table>';
+        devicesLive.innerHTML = html;
+      }
+    }
+
+    // Add scanned device as route
+    async function addScannedDevice(netId, ipAddress, port, name) {
+      const route = {
+        name: name,
+        netId: netId,
+        ipAddress: ipAddress,
+        port: port,
+        description: 'Added via network scan'
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/ads/routes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(route)
+        });
+
+        if (response.ok) {
+          alert('Route added successfully!');
+          loadRoutes();
+          loadDashboard(); // Update header route count
+          // Re-scan to update configured status
+          if (currentTab === 'routes') {
+            startScan();
+          }
+        } else {
+          alert('Failed to add route');
+        }
+      } catch (error) {
+        console.error('Failed to add route:', error);
+        alert('Error adding route');
+      }
+    }
+
+    // Utility Functions
+    function formatUptime(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      if (minutes > 0) return `${minutes}m ${secs}s`;
+      return `${secs}s`;
+    }
+
+    // Load Errors
+    async function loadErrors() {
+      try {
+        const response = await fetch(`${API_BASE}/api/errors`);
+        const data = await response.json();
+        
+        const errorCount = data.unresolvedCount || 0;
+        const errorIndicator = document.getElementById('error-indicator');
+        const errorCountEl = document.getElementById('error-count');
+        
+        if (errorCount > 0) {
+          errorIndicator.style.display = 'flex';
+          errorCountEl.textContent = errorCount;
+        } else {
+          errorIndicator.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Failed to load errors:', error);
+      }
+    }
+
+    async function loadSymbolDiscovery() {
+      try {
+        const response = await fetch(`${API_BASE}/api/symbols/discovered`);
+        const data = await response.json();
+        
+        const symbolCount = data.count || 0;
+        const symbolIndicator = document.getElementById('symbol-discovery-indicator');
+        const symbolCountEl = document.getElementById('symbol-count');
+        
+        if (symbolCount > 0) {
+          symbolIndicator.style.display = 'flex';
+          symbolCountEl.textContent = symbolCount;
+        } else {
+          symbolIndicator.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Failed to load symbol discovery:', error);
+      }
+    }
+
+    async function triggerSymbolDiscovery() {
+      try {
+        const response = await fetch(`${API_BASE}/api/symbols/discover`, {
+          method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          showNotification('Symbol discovery triggered', 'success');
+          setTimeout(() => loadSymbolDiscovery(), 2000);
+        }
+      } catch (error) {
+        showNotification('Failed to trigger symbol discovery', 'error');
+      }
+    }
+
+    // Auto-refresh
+    function startAutoRefresh() {
+      refreshInterval = setInterval(() => {
+        loadDashboard(); // Always update header and dropdown
+        loadErrors(); // Always check for errors
+        loadSymbolDiscovery(); // Check for discovered symbols
+      }, 5000);
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[Dashboard] Initializing...');
+      loadDashboard();
+      loadErrors();
+      loadSymbolDiscovery();
+      startAutoRefresh();
+      detectNetwork();
+      // Load initial tab data (Routes is default)
+      loadTabData('routes');
+    });
+
+    // Close modals on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal').forEach(modal => {
+          modal.classList.remove('active');
+        });
+      }
+    });
+
+    // Close modals on background click
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

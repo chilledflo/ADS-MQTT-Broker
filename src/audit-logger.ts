@@ -4,8 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 export interface AuditLog {
   id: string;
   timestamp: Date;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'READ' | 'VALUE_CHANGE';
-  variableId: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'READ' | 'VALUE_CHANGE' | 'CREATE_ROUTE' | 'DELETE_ROUTE' | 'TEST_ROUTE';
+  variableId?: string;
   variableName?: string;
   userId?: string;
   userIp?: string;

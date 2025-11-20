@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADS-MQTT Broker v4.0 - Dashboard</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary-red: #dc2626;
+      --dark-red: #991b1b;
+      --light-red: #ef4444;
+      --bg-dark: #0f0f0f;
+      --bg-card: #1a1a1a;
+      --bg-hover: #262626;
+      --text-primary: #ffffff;
+      --text-secondary: #a3a3a3;
+      --border: #404040;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--dark-red), var(--primary-red));
+      padding: 1.5rem 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .logo-text h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-text p {
+      font-size: 0.75rem;
+      opacity: 0.9;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.875rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary-red), var(--light-red));
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary-red);
+      box-shadow: 0 8px 16px rgba(220, 38, 38, 0.2);
+    }
+
+    .stat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .stat-label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-icon {
+      font-size: 1.5rem;
+      opacity: 0.5;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-change {
+      font-size: 0.75rem;
+      color: var(--success);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 1rem 1.5rem;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+    }
+
+    .tab:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .tab.active {
+      color: var(--primary-red);
+      border-bottom-color: var(--primary-red);
+    }
+
+    /* Content Sections */
+    .content-section {
+      display: none;
+    }
+
+    .content-section.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Table */
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 1rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+
+    tr:hover {
+      background: var(--bg-hover);
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 0.625rem 1.25rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: var(--primary-red);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--dark-red);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+    }
+
+    .btn-secondary {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    .btn-sm {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.75rem;
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .badge-error {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--error);
+    }
+
+    .badge-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+
+    /* Real-time Log */
+    .log-container {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+    }
+
+    .log-entry {
+      padding: 0.25rem 0;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .log-time {
+      color: var(--text-secondary);
+    }
+
+    .log-level {
+      font-weight: 600;
+    }
+
+    .log-level.info { color: #3b82f6; }
+    .log-level.success { color: var(--success); }
+    .log-level.error { color: var(--error); }
+    .log-level.warning { color: var(--warning); }
+
+    /* Chart Container */
+    .chart-container {
+      height: 300px;
+      position: relative;
+    }
+
+    /* Loading */
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary-red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      transition: all 0.3s ease;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary-red);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header-content {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+      }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-dark);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary-red);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">
+          <h1>ADS-MQTT Broker</h1>
+          <p>v4.0 Event-Driven Architecture</p>
+        </div>
+      </div>
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        <span id="connection-status">Verbunden</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="container">
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Variablen</span>
+          <span class="stat-icon">📊</span>
+        </div>
+        <div class="stat-value" id="stat-variables">0</div>
+        <div class="stat-change">✓ Aktiv</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">MQTT Clients</span>
+          <span class="stat-icon">📡</span>
+        </div>
+        <div class="stat-value" id="stat-mqtt">0</div>
+        <div class="stat-change">✓ Verbunden</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">WebSocket</span>
+          <span class="stat-icon">🔌</span>
+        </div>
+        <div class="stat-value" id="stat-ws">0</div>
+        <div class="stat-change">✓ Real-time</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Cache Hit Rate</span>
+          <span class="stat-icon">⚡</span>
+        </div>
+        <div class="stat-value" id="stat-cache">0%</div>
+        <div class="stat-change">✓ Optimiert</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">API Latenz</span>
+          <span class="stat-icon">🚀</span>
+        </div>
+        <div class="stat-value" id="stat-latency">0ms</div>
+        <div class="stat-change">✓ Sub-Millisekunde</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Queue Jobs</span>
+          <span class="stat-icon">📥</span>
+        </div>
+        <div class="stat-value" id="stat-queue">0</div>
+        <div class="stat-change">✓ Processing</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="overview">Übersicht</button>
+      <button class="tab" data-tab="variables">Variablen</button>
+      <button class="tab" data-tab="connections">Verbindungen</button>
+      <button class="tab" data-tab="performance">Performance</button>
+      <button class="tab" data-tab="logs">Live Logs</button>
+      <button class="tab" data-tab="websocket">WebSocket Test</button>
+    </div>
+
+    <!-- Overview Section -->
+    <div class="content-section active" id="overview">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🎯 System Status</h2>
+          <button class="btn btn-secondary btn-sm" onclick="refreshData()">
+            🔄 Aktualisieren
+          </button>
+        </div>
+        <div id="system-status"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">📈 Performance Metriken</h2>
+        </div>
+        <div id="performance-metrics"></div>
+      </div>
+    </div>
+
+    <!-- Variables Section -->
+    <div class="content-section" id="variables">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">📊 Aktive Variablen</h2>
+          <button class="btn btn-primary btn-sm" onclick="refreshVariables()">
+            ➕ Variable hinzufügen
+          </button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Wert</th>
+                <th>Typ</th>
+                <th>Status</th>
+                <th>Letztes Update</th>
+                <th>Aktionen</th>
+              </tr>
+            </thead>
+            <tbody id="variables-table">
+              <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-secondary);">
+                  <div class="loading"></div> Lade Variablen...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connections Section -->
+    <div class="content-section" id="connections">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🔗 ADS Verbindungen</h2>
+          <button class="btn btn-primary btn-sm">➕ Verbindung hinzufügen</button>
+        </div>
+        <div id="connections-list"></div>
+      </div>
+    </div>
+
+    <!-- Performance Section -->
+    <div class="content-section" id="performance">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">⚡ Performance Dashboard</h2>
+        </div>
+        <div id="performance-data"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">💾 Cache Statistiken</h2>
+        </div>
+        <div id="cache-stats"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">📥 Queue Status</h2>
+        </div>
+        <div id="queue-stats"></div>
+      </div>
+    </div>
+
+    <!-- Logs Section -->
+    <div class="content-section" id="logs">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">📝 Live Event Logs</h2>
+          <button class="btn btn-secondary btn-sm" onclick="clearLogs()">
+            🗑️ Löschen
+          </button>
+        </div>
+        <div class="log-container" id="log-container"></div>
+      </div>
+    </div>
+
+    <!-- WebSocket Test Section -->
+    <div class="content-section" id="websocket">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🔌 WebSocket Real-time Test</h2>
+        </div>
+        <div id="websocket-test">
+          <div class="form-group">
+            <label class="form-label">Variable ID zum Subscriben</label>
+            <div style="display: flex; gap: 1rem;">
+              <input type="text" class="form-input" id="ws-variable-id" placeholder="z.B. GVL.Motor.Speed" style="flex: 1;">
+              <button class="btn btn-primary" onclick="subscribeVariable()">Subscribe</button>
+            </div>
+          </div>
+          <div class="log-container" id="websocket-log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // WebSocket Connection
+    const socket = io('http://localhost:8080');
+    let logs = [];
+
+    // Tab Switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // WebSocket Events
+    socket.on('connect', () => {
+      document.getElementById('connection-status').textContent = 'Verbunden';
+      addLog('success', 'WebSocket verbunden');
+    });
+
+    socket.on('disconnect', () => {
+      document.getElementById('connection-status').textContent = 'Getrennt';
+      addLog('error', 'WebSocket getrennt');
+    });
+
+    socket.on('variable:changed', (data) => {
+      addLog('info', `Variable geändert: ${data.variableName} = ${data.value}`);
+      addWebSocketLog('info', `🔔 ${data.variableName}: ${data.value}`);
+    });
+
+    // Load Data
+    async function loadData() {
+      try {
+        // Health
+        const health = await fetch('/api/health').then(r => r.json());
+        document.getElementById('stat-ws').textContent = health.websocket?.clients || 0;
+
+        // Variables
+        const variables = await fetch('/api/variables').then(r => r.json());
+        document.getElementById('stat-variables').textContent = variables.length;
+        updateVariablesTable(variables);
+
+        // Metrics
+        const metrics = await fetch('/api/metrics').then(r => r.json());
+        updateMetrics(metrics);
+
+        // Cache
+        if (metrics.cache) {
+          document.getElementById('stat-cache').textContent = metrics.cache.hitRate + '%';
+        }
+
+        // Connections
+        const connections = await fetch('/api/connections').then(r => r.json());
+        updateConnections(connections);
+
+        addLog('success', 'Daten aktualisiert');
+      } catch (error) {
+        addLog('error', 'Fehler beim Laden: ' + error.message);
+      }
+    }
+
+    function updateVariablesTable(variables) {
+      const tbody = document.getElementById('variables-table');
+      if (variables.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">Keine Variablen gefunden</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = variables.map(v => `
+        <tr>
+          <td><strong>${v.name}</strong></td>
+          <td><code>${v.value !== undefined ? v.value : 'N/A'}</code></td>
+          <td>${v.type}</td>
+          <td><span class="badge badge-success">Aktiv</span></td>
+          <td>${v.timestamp ? new Date(v.timestamp).toLocaleTimeString('de-DE') : 'N/A'}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="subscribeToVariable('${v.id}')">📡 Subscribe</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function updateMetrics(metrics) {
+      const perfDiv = document.getElementById('performance-metrics');
+      const perfData = document.getElementById('performance-data');
+      const cacheDiv = document.getElementById('cache-stats');
+      const queueDiv = document.getElementById('queue-stats');
+
+      // Performance
+      if (metrics.performance) {
+        const ops = metrics.performance.operations || {};
+        const opsArray = Object.entries(ops);
+
+        if (perfData && opsArray.length > 0) {
+          perfData.innerHTML = `
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Operation</th>
+                    <th>Count</th>
+                    <th>Avg</th>
+                    <th>P50</th>
+                    <th>P95</th>
+                    <th>P99</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${opsArray.slice(0, 10).map(([op, data]) => `
+                    <tr>
+                      <td><code>${op}</code></td>
+                      <td>${data.count}</td>
+                      <td>${formatNs(data.avgDuration)}</td>
+                      <td>${formatNs(data.p50)}</td>
+                      <td>${formatNs(data.p95)}</td>
+                      <td>${formatNs(data.p99)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+
+        // Update latency stat
+        if (metrics.performance.summary) {
+          const avgMs = metrics.performance.summary.avgLatency / 1000000;
+          document.getElementById('stat-latency').textContent = avgMs.toFixed(2) + 'ms';
+        }
+      }
+
+      // Cache
+      if (metrics.cache && cacheDiv) {
+        cacheDiv.innerHTML = `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+              <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Hits</div>
+              <div style="font-size: 1.5rem; font-weight: 700;">${metrics.cache.hits}</div>
+            </div>
+            <div>
+              <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Misses</div>
+              <div style="font-size: 1.5rem; font-weight: 700;">${metrics.cache.misses}</div>
+            </div>
+            <div>
+              <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Hit Rate</div>
+              <div style="font-size: 1.5rem; font-weight: 700; color: var(--success);">${metrics.cache.hitRate}%</div>
+            </div>
+            <div>
+              <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Total Operations</div>
+              <div style="font-size: 1.5rem; font-weight: 700;">${metrics.cache.totalOperations}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Queue
+      if (metrics.queue && queueDiv) {
+        const qStats = metrics.queue;
+        let totalJobs = 0;
+        Object.values(qStats).forEach(q => {
+          if (q.waiting) totalJobs += q.waiting;
+          if (q.active) totalJobs += q.active;
+        });
+        document.getElementById('stat-queue').textContent = totalJobs;
+
+        queueDiv.innerHTML = Object.entries(qStats).map(([name, stats]) => `
+          <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-dark); border-radius: 8px;">
+            <div style="font-weight: 600; margin-bottom: 0.5rem;">${name}</div>
+            <div style="display: flex; gap: 2rem; font-size: 0.875rem;">
+              <div>Waiting: <strong>${stats.waiting || 0}</strong></div>
+              <div>Active: <strong>${stats.active || 0}</strong></div>
+              <div>Completed: <strong>${stats.completed || 0}</strong></div>
+              <div>Failed: <strong>${stats.failed || 0}</strong></div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function updateConnections(connections) {
+      const div = document.getElementById('connections-list');
+      if (!div) return;
+
+      div.innerHTML = connections.map(conn => `
+        <div style="padding: 1rem; margin-bottom: 1rem; background: var(--bg-dark); border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 600; margin-bottom: 0.5rem;">${conn.name}</div>
+              <div style="font-size: 0.875rem; color: var(--text-secondary);">ID: ${conn.id}</div>
+            </div>
+            <span class="badge ${conn.connected ? 'badge-success' : 'badge-error'}">
+              ${conn.connected ? '✓ Verbunden' : '✗ Getrennt'}
+            </span>
+          </div>
+          <div style="margin-top: 0.75rem; font-size: 0.875rem;">
+            Variablen: <strong>${conn.variableCount || 0}</strong>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function formatNs(ns) {
+      if (ns < 1000) return ns.toFixed(0) + 'ns';
+      if (ns < 1000000) return (ns / 1000).toFixed(2) + 'µs';
+      return (ns / 1000000).toFixed(2) + 'ms';
+    }
+
+    function addLog(level, message) {
+      const time = new Date().toLocaleTimeString('de-DE');
+      logs.unshift({ time, level, message });
+      if (logs.length > 100) logs.pop();
+
+      const container = document.getElementById('log-container');
+      if (container) {
+        container.innerHTML = logs.map(log => `
+          <div class="log-entry">
+            <span class="log-time">${log.time}</span>
+            <span class="log-level ${log.level}">[${log.level.toUpperCase()}]</span>
+            <span>${log.message}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    function addWebSocketLog(level, message) {
+      const time = new Date().toLocaleTimeString('de-DE');
+      const container = document.getElementById('websocket-log');
+      if (container) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerHTML = `
+          <span class="log-time">${time}</span>
+          <span class="log-level ${level}">[${level.toUpperCase()}]</span>
+          <span>${message}</span>
+        `;
+        container.insertBefore(entry, container.firstChild);
+      }
+    }
+
+    function subscribeVariable() {
+      const varId = document.getElementById('ws-variable-id').value;
+      if (!varId) return;
+
+      socket.emit('subscribe:variable', varId);
+      addWebSocketLog('success', `Subscribed zu: ${varId}`);
+    }
+
+    function subscribeToVariable(varId) {
+      socket.emit('subscribe:variable', varId);
+      addLog('success', `Subscribed zu Variable: ${varId}`);
+
+      // Switch to WebSocket tab
+      document.querySelector('[data-tab="websocket"]').click();
+    }
+
+    function clearLogs() {
+      logs = [];
+      document.getElementById('log-container').innerHTML = '';
+    }
+
+    function refreshData() {
+      addLog('info', 'Aktualisiere Daten...');
+      loadData();
+    }
+
+    function refreshVariables() {
+      loadData();
+    }
+
+    // Initial Load
+    loadData();
+
+    // Auto Refresh
+    setInterval(loadData, 5000);
+
+    // Log startup
+    addLog('success', 'Dashboard v4.0 geladen');
+    addLog('info', 'Event-Driven Architecture aktiv');
+  </script>
+</body>
+</html>

@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MQTT-ADS Bridge</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #dc2626;
+      --primary-dark: #991b1b;
+      --bg-dark: #1a1a1a;
+      --bg-card: #2a2a2a;
+      --text-light: #ffffff;
+      --text-gray: #9ca3af;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Splash Screen */
+    #splash-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, var(--bg-dark) 0%, #000000 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease-out;
+    }
+
+    #splash-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .splash-logo {
+      width: 200px;
+      height: 200px;
+      margin-bottom: 3rem;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.9; }
+    }
+
+    .splash-text {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-light);
+      margin-bottom: 2rem;
+      letter-spacing: 2px;
+    }
+
+    .progress-container {
+      width: 400px;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary) 0%, #ff6b6b 100%);
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+    }
+
+    .bridge-building {
+      margin-top: 2rem;
+      font-size: 1rem;
+      color: var(--text-gray);
+      animation: fadeInOut 2s ease-in-out infinite;
+    }
+
+    @keyframes fadeInOut {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      padding: 1rem 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: white;
+    }
+
+    .logo-image {
+      width: 40px;
+      height: 40px;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+    }
+
+    .heartbeat {
+      width: 24px;
+      height: 24px;
+      position: relative;
+      animation: heartbeat 1.5s ease-in-out infinite;
+    }
+
+    @keyframes heartbeat {
+      0%, 100% { transform: scale(1); }
+      10% { transform: scale(1.2); }
+      20% { transform: scale(1); }
+      30% { transform: scale(1.2); }
+      40% { transform: scale(1); }
+    }
+
+    .heartbeat.online {
+      color: var(--success);
+    }
+
+    .heartbeat.offline {
+      color: var(--error);
+      animation: none;
+    }
+
+    .status-text {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: white;
+    }
+
+    /* Main Content */
+    .container {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 2rem;
+      flex: 1;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      margin-bottom: 2rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-light);
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-light);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 1rem;
+      font-weight: 600;
+      color: var(--text-gray);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--text-light);
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .badge-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+
+    .badge-error {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--error);
+    }
+
+    /* Network Scanner */
+    .scan-controls {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .input-group {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--text-gray);
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-light);
+      font-size: 0.875rem;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .scan-results {
+      margin-top: 1.5rem;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-gray);
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .header-status {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .progress-container {
+        width: 80%;
+      }
+
+      .splash-text {
+        font-size: 1.5rem;
+      }
+
+      .splash-logo {
+        width: 150px;
+        height: 150px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Splash Screen -->
+  <div id="splash-screen">
+    <svg class="splash-logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- MQTT Side (Left) -->
+      <rect id="mqtt-tower" x="10" y="80" width="30" height="80" fill="#dc2626" opacity="0"/>
+      <text x="25" y="140" font-size="10" fill="white" text-anchor="middle" opacity="0" id="mqtt-text">MQTT</text>
+      
+      <!-- ADS Side (Right) -->
+      <rect id="ads-tower" x="160" y="80" width="30" height="80" fill="#dc2626" opacity="0"/>
+      <text x="175" y="140" font-size="10" fill="white" text-anchor="middle" opacity="0" id="ads-text">ADS</text>
+      
+      <!-- Bridge (animiert) -->
+      <path id="bridge" d="M 40 120 L 160 120" stroke="#dc2626" stroke-width="8" stroke-linecap="round" opacity="0" stroke-dasharray="120" stroke-dashoffset="120"/>
+      
+      <!-- Data Flow Arrows -->
+      <path id="arrow-right" d="M 60 115 L 80 115 L 75 110 M 80 115 L 75 120" stroke="#ff6b6b" stroke-width="2" fill="none" opacity="0"/>
+      <path id="arrow-left" d="M 140 125 L 120 125 L 125 120 M 120 125 L 125 130" stroke="#ff6b6b" stroke-width="2" fill="none" opacity="0"/>
+    </svg>
+    
+    <div class="splash-text">MQTT-ADS Bridge</div>
+    
+    <div class="progress-container">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    
+    <div class="bridge-building" id="bridge-status">Initialisiere System...</div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">
+        <svg class="logo-image" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <rect x="10" y="80" width="30" height="80" fill="white"/>
+          <text x="25" y="140" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="bold">MQTT</text>
+          <rect x="160" y="80" width="30" height="80" fill="white"/>
+          <text x="175" y="140" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="bold">ADS</text>
+          <path d="M 40 120 L 160 120" stroke="white" stroke-width="8" stroke-linecap="round"/>
+          <path d="M 60 115 L 80 115 L 75 110 M 80 115 L 75 120" stroke="#ff6b6b" stroke-width="2" fill="none"/>
+          <path d="M 140 125 L 120 125 L 125 120 M 120 125 L 125 130" stroke="#ff6b6b" stroke-width="2" fill="none"/>
+        </svg>
+        <span>MQTT-ADS Bridge</span>
+      </div>
+      <div class="header-status">
+        <div class="status-item">
+          <svg class="heartbeat online" id="heartbeat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            <path d="M3.5 12h3l2-3 2 6 2-3h3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="status-text" id="status-text">Online</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="container">
+    <!-- ADS Routes -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">ADS Routes</h2>
+        <button class="btn btn-primary" onclick="openAddRouteModal()">
+          <span>+</span> Route hinzufügen
+        </button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>NetID</th>
+            <th>IP-Adresse</th>
+            <th>Port</th>
+            <th>Status</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody id="routes-list">
+          <tr>
+            <td colspan="6" class="loading">Lade Routen...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Network Scanner -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Netzwerk Scanner</h2>
+      </div>
+      <div class="scan-controls">
+        <div class="input-group">
+          <label>Netzwerk (wird automatisch erkannt)</label>
+          <input type="text" id="network-input" placeholder="192.168.1.0/24" readonly>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+          <button class="btn btn-primary" onclick="scanNetwork('quick')">Quick Scan</button>
+          <button class="btn btn-secondary" onclick="scanNetwork('standard')">Standard Scan</button>
+          <button class="btn btn-secondary" onclick="scanNetwork('full')">Full Scan (800-1000)</button>
+        </div>
+      </div>
+      <div id="scan-results" class="scan-results"></div>
+    </div>
+
+    <!-- Variables -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Variablen</h2>
+        <button class="btn btn-primary" onclick="openAddVariableModal()">
+          <span>+</span> Variable hinzufügen
+        </button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Pfad</th>
+            <th>Typ</th>
+            <th>Wert</th>
+            <th>MQTT Topic</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody id="variables-list">
+          <tr>
+            <td colspan="6" class="loading">Lade Variablen...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8080';
+    let refreshInterval;
+
+    // Splash Screen Animation
+    function animateSplashScreen() {
+      const stages = [
+        { progress: 20, status: 'Baue MQTT Turm...', delay: 300, animation: () => {
+          document.getElementById('mqtt-tower').style.opacity = '1';
+          document.getElementById('mqtt-text').style.opacity = '1';
+        }},
+        { progress: 40, status: 'Baue ADS Turm...', delay: 300, animation: () => {
+          document.getElementById('ads-tower').style.opacity = '1';
+          document.getElementById('ads-text').style.opacity = '1';
+        }},
+        { progress: 60, status: 'Baue Brücke...', delay: 600, animation: () => {
+          const bridge = document.getElementById('bridge');
+          bridge.style.opacity = '1';
+          bridge.style.transition = 'stroke-dashoffset 1s ease-out';
+          bridge.style.strokeDashoffset = '0';
+        }},
+        { progress: 80, status: 'Aktiviere Datenfluss...', delay: 400, animation: () => {
+          document.getElementById('arrow-right').style.opacity = '1';
+          document.getElementById('arrow-left').style.opacity = '1';
+        }},
+        { progress: 100, status: 'Brücke fertig gebaut!', delay: 400, animation: null }
+      ];
+
+      let currentStage = 0;
+
+      function nextStage() {
+        if (currentStage >= stages.length) {
+          setTimeout(() => {
+            document.getElementById('splash-screen').classList.add('hidden');
+            setTimeout(() => {
+              document.getElementById('splash-screen').remove();
+            }, 500);
+          }, 300);
+          return;
+        }
+
+        const stage = stages[currentStage];
+        document.getElementById('progress-bar').style.width = stage.progress + '%';
+        document.getElementById('bridge-status').textContent = stage.status;
+
+        if (stage.animation) {
+          stage.animation();
+        }
+
+        currentStage++;
+        setTimeout(nextStage, stage.delay);
+      }
+
+      nextStage();
+    }
+
+    // Start splash animation on load
+    animateSplashScreen();
+
+    // Check system health
+    async function checkHealth() {
+      try {
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+        
+        const heartbeat = document.getElementById('heartbeat-icon');
+        const statusText = document.getElementById('status-text');
+        
+        if (data.status === 'ok') {
+          heartbeat.classList.add('online');
+          heartbeat.classList.remove('offline');
+          statusText.textContent = 'Online';
+        } else {
+          heartbeat.classList.add('offline');
+          heartbeat.classList.remove('online');
+          statusText.textContent = 'Offline';
+        }
+      } catch (error) {
+        const heartbeat = document.getElementById('heartbeat-icon');
+        const statusText = document.getElementById('status-text');
+        heartbeat.classList.add('offline');
+        heartbeat.classList.remove('online');
+        statusText.textContent = 'Offline';
+      }
+    }
+
+    // Load ADS Routes
+    async function loadRoutes() {
+      try {
+        const response = await fetch(`${API_BASE}/api/ads/routes`);
+        const data = await response.json();
+        
+        const tbody = document.getElementById('routes-list');
+        
+        if (data.routes && data.routes.length > 0) {
+          tbody.innerHTML = data.routes.map(route => `
+            <tr>
+              <td>${route.name}</td>
+              <td>${route.netId}</td>
+              <td>${route.ipAddress}</td>
+              <td>${route.port}</td>
+              <td>
+                <span class="badge ${route.active ? 'badge-success' : 'badge-warning'}">
+                  ${route.active ? 'Aktiv' : 'Inaktiv'}
+                </span>
+              </td>
+              <td>
+                <button class="btn btn-secondary" onclick="testRoute('${route.id}')">Test</button>
+                <button class="btn btn-secondary" onclick="deleteRoute('${route.id}')">Löschen</button>
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-gray);">Keine Routen konfiguriert</td></tr>';
+        }
+      } catch (error) {
+        console.error('Failed to load routes:', error);
+      }
+    }
+
+    // Load Variables
+    async function loadVariables() {
+      try {
+        const response = await fetch(`${API_BASE}/api/variables`);
+        const data = await response.json();
+        
+        const tbody = document.getElementById('variables-list');
+        
+        if (data.variables && data.variables.length > 0) {
+          tbody.innerHTML = data.variables.map(variable => `
+            <tr>
+              <td>${variable.name}</td>
+              <td>${variable.path}</td>
+              <td><span class="badge badge-success">${variable.type}</span></td>
+              <td>${variable.value !== undefined ? variable.value : '-'}</td>
+              <td style="font-family: monospace; font-size: 0.75rem;">${variable.mqttTopic}</td>
+              <td>
+                <button class="btn btn-secondary" onclick="deleteVariable('${variable.id}')">Löschen</button>
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-gray);">Keine Variablen konfiguriert</td></tr>';
+        }
+      } catch (error) {
+        console.error('Failed to load variables:', error);
+      }
+    }
+
+    // Network Detection
+    async function detectNetwork() {
+      try {
+        const response = await fetch(`${API_BASE}/api/network/info`);
+        const data = await response.json();
+        
+        if (data.network) {
+          document.getElementById('network-input').value = data.network;
+        }
+      } catch (error) {
+        console.error('Failed to detect network:', error);
+      }
+    }
+
+    // Network Scanner
+    async function scanNetwork(mode) {
+      const resultsDiv = document.getElementById('scan-results');
+      resultsDiv.innerHTML = `
+        <div class="loading">
+          <div class="spinner"></div>
+          <p>Scanne Netzwerk... Dies kann einige Minuten dauern.</p>
+        </div>
+      `;
+
+      try {
+        const network = document.getElementById('network-input').value;
+        const response = await fetch(`${API_BASE}/api/ads/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            network,
+            quickScan: mode === 'quick',
+            fullPortScan: mode === 'full'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.devices && data.devices.length > 0) {
+          resultsDiv.innerHTML = `
+            <h3 style="margin-bottom: 1rem; color: var(--text-light);">
+              ${data.devices.length} Gerät(e) gefunden
+            </h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>IP-Adresse</th>
+                  <th>Hostname</th>
+                  <th>ADS Ports</th>
+                  <th>Status</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.devices.map(device => `
+                  <tr>
+                    <td>${device.ip}</td>
+                    <td>${device.hostname || '-'}</td>
+                    <td>${device.openPorts.join(', ')}</td>
+                    <td>
+                      ${device.isConfigured ? 
+                        '<span class="badge badge-success">✅ Konfiguriert</span>' : 
+                        '<span class="badge badge-warning">Neu</span>'
+                      }
+                    </td>
+                    <td>
+                      ${!device.isConfigured ? 
+                        `<button class="btn btn-primary" onclick="addRouteFromScan('${device.ip}', ${device.openPorts[0]})">Hinzufügen</button>` : 
+                        '-'
+                      }
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        } else {
+          resultsDiv.innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: var(--text-gray);">
+              <p>Keine TwinCAT/ADS Geräte gefunden</p>
+            </div>
+          `;
+        }
+      } catch (error) {
+        resultsDiv.innerHTML = `
+          <div style="text-align: center; padding: 2rem; color: var(--error);">
+            <p>Fehler beim Scannen: ${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Placeholder functions
+    function openAddRouteModal() {
+      alert('Route hinzufügen - Modal wird implementiert');
+    }
+
+    function openAddVariableModal() {
+      alert('Variable hinzufügen - Modal wird implementiert');
+    }
+
+    function testRoute(id) {
+      alert('Route testen: ' + id);
+    }
+
+    async function deleteRoute(id) {
+      if (!confirm('Route wirklich löschen?')) return;
+      
+      try {
+        await fetch(`${API_BASE}/api/ads/routes/${id}`, {
+          method: 'DELETE'
+        });
+        loadRoutes();
+      } catch (error) {
+        alert('Fehler beim Löschen: ' + error.message);
+      }
+    }
+
+    async function deleteVariable(id) {
+      if (!confirm('Variable wirklich löschen?')) return;
+      
+      try {
+        await fetch(`${API_BASE}/api/variables/${id}`, {
+          method: 'DELETE'
+        });
+        loadVariables();
+      } catch (error) {
+        alert('Fehler beim Löschen: ' + error.message);
+      }
+    }
+
+    function addRouteFromScan(ip, port) {
+      alert(`Route hinzufügen für ${ip}:${port} - Funktion wird implementiert`);
+    }
+
+    // Auto-refresh
+    function startAutoRefresh() {
+      refreshInterval = setInterval(() => {
+        checkHealth();
+        loadRoutes();
+        loadVariables();
+      }, 5000);
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        checkHealth();
+        loadRoutes();
+        loadVariables();
+        detectNetwork();
+        startAutoRefresh();
+      }, 2500); // Start loading data after splash screen
+    });
+  </script>
+</body>
+</html>

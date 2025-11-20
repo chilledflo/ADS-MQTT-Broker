@@ -24,7 +24,20 @@
       "Bash(gh --version:*)",
       "Bash(winget install:*)",
       "Bash(choco install:*)",
-      "Bash(npm run dev:v3:*)"
+      "Bash(npm run dev:v3:*)",
+      "Bash(timeout 20 npm run dev:v3:*)",
+      "Bash(where choco:*)",
+      "Bash(cmd /c \"install-redis.bat\")",
+      "Bash(powershell -Command \"Start-Process cmd -ArgumentList ''/c cd C:\\ADS-MQTT-Broker && install-redis.bat && pause'' -Verb RunAs\")",
+      "Bash(where:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "Bash(dir \"C:\\Program Files\\Redis\")",
+      "Bash(\"C:\\Program Files\\Memurai\\memurai-cli.exe\" ping)",
+      "Bash(timeout 30 npm run dev:*)",
+      "Bash(npm run dev:v4:*)",
+      "Bash(start:*)"
     ],
     "deny": [],
     "ask": []
