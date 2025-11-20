@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { Client as AdsClient, AdsSymbol } from 'ads-client'; // Korrigierter Import für AdsClient und AdsSymbol
 import { AdsVariable } from './ads-gateway';
 
 export interface PlcSymbol {
@@ -33,10 +34,12 @@ export class AdsSymbolDiscovery extends EventEmitter {
   private discoveryTimer?: NodeJS.Timeout;
   private lastSymbolVersion: number = 0;
   private isDiscovering: boolean = false;
+  private allAdsSymbols: AdsSymbol[] = []; // Zum Speichern aller ADS-Symbole
 
   constructor(
     private connectionId: string,
-    private config: SymbolDiscoveryConfig
+    private config: SymbolDiscoveryConfig,
+    private adsClient: AdsClient // ADS Client Instanz hinzufügen
   ) {
     super();
   }
@@ -119,16 +122,8 @@ export class AdsSymbolDiscovery extends EventEmitter {
    * Diese ändert sich bei jedem OnlineChange
    */
   private async readSymbolVersion(): Promise<number> {
-    // TODO: Echte ADS-Implementierung
-    // In TwinCAT ist die Symbol-Version in der Symbol-Tabelle Header gespeichert
-    // IndexGroup: 0xF00F (61455), IndexOffset: 0x0000
-
-    // Mock-Implementierung: Simuliert gelegentliche OnlineChanges
-    if (Math.random() < 0.05) { // 5% Chance für OnlineChange
-      return Date.now();
-    }
-
-    return this.lastSymbolVersion || 1;
+    // Echte ADS-Implementierung: Symbol-Version aus der SPS lesen
+    return await this.adsClient.readPlcSymbolVersion();
   }
 
   /**
@@ -139,7 +134,14 @@ export class AdsSymbolDiscovery extends EventEmitter {
 
     try {
       // Lese Symbol-Anzahl
-      const symbolCount = await this.readSymbolCount();
+      const symbolsResult = await this.adsClient.getSymbols();
+      if (Array.isArray(symbolsResult)) {
+        this.allAdsSymbols = symbolsResult;
+      } else {
+        // Assuming AdsSymbolContainer has a 'symbols' property that is an array
+        this.allAdsSymbols = Array.isArray(symbolsResult.symbols) ? symbolsResult.symbols : [];
+      }
+      const symbolCount = this.allAdsSymbols.length;
 
       console.log(`[Symbol Discovery] Found ${symbolCount} symbols`);
 
@@ -147,12 +149,22 @@ export class AdsSymbolDiscovery extends EventEmitter {
 
       // Lese alle Symbol-Informationen
       for (let i = 0; i < symbolCount; i++) {
-        const symbol = await this.readSymbolInfo(i);
+        const adsSymbol = this.allAdsSymbols[i];
 
         // Filter anwenden wenn konfiguriert
-        if (this.config.symbolFilter && !this.config.symbolFilter.test(symbol.name)) {
+        if (this.config.symbolFilter && !this.config.symbolFilter.test(adsSymbol.name)) {
           continue;
         }
+
+        const symbol: PlcSymbol = {
+          name: adsSymbol.name,
+          indexGroup: adsSymbol.indexGroup,
+          indexOffset: adsSymbol.indexOffset,
+          size: adsSymbol.size,
+          dataType: adsSymbol.type,
+          comment: adsSymbol.comment,
+          flags: adsSymbol.flags
+        };
 
         symbols.push(symbol);
         this.symbols.set(symbol.name, symbol);
@@ -188,50 +200,30 @@ export class AdsSymbolDiscovery extends EventEmitter {
    * Liest die Anzahl der Symbole
    */
   private async readSymbolCount(): Promise<number> {
-    // TODO: Echte ADS-Implementierung
-    // IndexGroup: 0xF00F (61455), IndexOffset: 0x0000
-    // Liest die Anzahl der verfügbaren Symbole
-
-    // Mock-Implementierung mit realistischen Test-Symbolen
-    return 15; // Simuliere 15 Symbole
+    // Echte ADS-Implementierung: Anzahl der Symbole aus der SPS lesen
+    const uploadInfo = await this.adsClient.readPlcUploadInfo();
+    return uploadInfo.symbolCount;
   }
 
   /**
    * Liest Symbol-Informationen für einen Index
    */
   private async readSymbolInfo(index: number): Promise<PlcSymbol> {
-    // TODO: Echte ADS-Implementierung
-    // IndexGroup: 0xF00F, IndexOffset basierend auf Index
+    // Symbol-Informationen aus dem bereits geladenen Array abrufen
+    const adsSymbol = this.allAdsSymbols[index];
 
-    // Mock-Implementierung mit realistischen Symbol-Namen
-    const mockSymbols = [
-      { name: 'GVL.Motor.Speed', dataType: 'REAL', comment: 'Motor speed in RPM' },
-      { name: 'GVL.Motor.Running', dataType: 'BOOL', comment: 'Motor running status' },
-      { name: 'GVL.Motor.Current', dataType: 'REAL', comment: 'Motor current in A' },
-      { name: 'GVL.Sensor.Temperature', dataType: 'REAL', comment: 'Temperature sensor' },
-      { name: 'GVL.Sensor.Pressure', dataType: 'REAL', comment: 'Pressure sensor' },
-      { name: 'GVL.Sensor.Level', dataType: 'REAL', comment: 'Level sensor' },
-      { name: 'GVL.Valve.Position', dataType: 'REAL', comment: 'Valve position %' },
-      { name: 'GVL.Valve.Open', dataType: 'BOOL', comment: 'Valve open command' },
-      { name: 'GVL.Pump.Active', dataType: 'BOOL', comment: 'Pump active' },
-      { name: 'GVL.Pump.FlowRate', dataType: 'REAL', comment: 'Flow rate L/min' },
-      { name: 'GVL.Counter.ProductCount', dataType: 'DINT', comment: 'Product counter' },
-      { name: 'GVL.Counter.CycleTime', dataType: 'DINT', comment: 'Cycle time ms' },
-      { name: 'GVL.Status.ErrorCode', dataType: 'WORD', comment: 'Error code' },
-      { name: 'GVL.Status.Warning', dataType: 'BOOL', comment: 'Warning active' },
-      { name: 'GVL.Config.SetPoint', dataType: 'REAL', comment: 'Setpoint value' },
-    ];
-
-    const mockData = mockSymbols[index % mockSymbols.length];
+    if (!adsSymbol) {
+      throw new Error(`Symbol at index ${index} not found.`);
+    }
 
     return {
-      name: mockData.name,
-      indexGroup: 0x4020, // Data area
-      indexOffset: index * 100,
-      size: this.getDataTypeSize(mockData.dataType),
-      dataType: mockData.dataType,
-      comment: mockData.comment,
-      flags: 0
+      name: adsSymbol.name,
+      indexGroup: adsSymbol.indexGroup,
+      indexOffset: adsSymbol.indexOffset,
+      size: adsSymbol.size,
+      dataType: adsSymbol.type,
+      comment: adsSymbol.comment,
+      flags: adsSymbol.flags
     };
   }
 

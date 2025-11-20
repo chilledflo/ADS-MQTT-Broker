@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { Client as AdsClient, AdsClientSettings } from 'ads-client'; // Korrigierter Import für AdsClient und AdsClientSettings
 
 export interface AdsVariable {
   id: string;
@@ -28,12 +29,9 @@ interface AdsHandle {
  * 3. Integration mit externen ADS-Clients via REST API
  */
 export class AdsGateway extends EventEmitter {
-  private client: any = null;
+  private client: AdsClient | null = null; // Typisierung für den ADS-Client
   private handles: Map<string, AdsHandle> = new Map();
   private connected = false;
-
-  // Mock-Werte für Demo/Testing
-  private mockValues: Map<string, any> = new Map();
 
   constructor(
     private adsHost: string,
@@ -43,28 +41,22 @@ export class AdsGateway extends EventEmitter {
     private adsSourcePort: number
   ) {
     super();
-    this.initializeMockValues();
-  }
-
-  private initializeMockValues(): void {
-    // Beispiel Mock-Werte für Demo
-    this.mockValues.set('GVL.Motor.Speed', 1234.56);
-    this.mockValues.set('GVL.Motor.Running', true);
-    this.mockValues.set('GVL.Sensor.Temperature', 45.2);
   }
 
   async connect(): Promise<void> {
     try {
-      // Versuche real mit ADS zu verbinden, fallback zu Mock bei Fehler
-      console.log(
-        `[ADS Gateway] Attempting connection to ${this.adsHost}:${this.adsPort}`
-      );
+      const options: AdsClientSettings = {
+        targetAmsNetId: this.adsHost,
+        targetAdsPort: this.adsPort,
+        localAdsPort: this.adsSourcePort,
+        // Weitere Optionen können hier hinzugefügt werden
+      };
 
-      // TODO: Hier würde die echte ADS-Verbindung stattfinden
-      // Für jetzt verwenden wir Mock-Werte
+      this.client = new AdsClient(options);
+      await this.client.connect();
       this.connected = true;
 
-      console.log(`[ADS Gateway] Ready (Mock Mode)`);
+      console.log(`[ADS Gateway] Connected to ADS at ${this.adsHost}:${this.adsPort}`);
       console.log(`[ADS Gateway] Target: ${this.adsTargetIp}:${this.adsTargetPort}`);
       this.emit('connected');
     } catch (error) {
@@ -161,25 +153,13 @@ export class AdsGateway extends EventEmitter {
   }
 
   private async readValue(variable: AdsVariable): Promise<any> {
-    if (!this.connected) {
-      throw new Error('ADS Gateway not connected');
+    if (!this.connected || !this.client) {
+      throw new Error('ADS Gateway not connected or client not initialized.');
     }
 
-    // Mock-Implementation für Demo
-    // In Production würde hier der echte ADS-Read stattfinden
-    const mockedValue = this.mockValues.get(variable.path);
-
-    if (mockedValue !== undefined) {
-      // Simuliere kleine Schwankungen für realistische Daten
-      if (typeof mockedValue === 'number' && Math.random() < 0.3) {
-        const variation = (Math.random() - 0.5) * 0.1;
-        return mockedValue + variation;
-      }
-      return mockedValue;
-    }
-
-    // Für unbekannte Variablen Fehler werfen
-    throw new Error(`Variable not found: ${variable.path}`);
+    // Echte ADS-Read-Implementierung
+    const result = await this.client.readValue(variable.path);
+    return result.value;
   }
 
   getVariable(variableId: string): AdsVariable | undefined {
@@ -193,5 +173,12 @@ export class AdsGateway extends EventEmitter {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /**
+   * Gibt den ADS Client zurück (für Symbol Discovery)
+   */
+  getClient(): AdsClient | null {
+    return this.client;
   }
 }
