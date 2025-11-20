@@ -67,10 +67,9 @@ export class AdsConnectionManager extends EventEmitter {
     gateway.on('connected', () => {
       this.emit('connection-established', { connectionId: config.id, name: config.name });
 
-      // Starte Symbol Discovery nach erfolgreicher Verbindung
-      const discovery = this.symbolDiscoveries.get(config.id);
-      if (discovery) {
-        discovery.start();
+      // Setup Symbol Discovery nach erfolgreicher Verbindung wenn konfiguriert
+      if (config.symbolDiscovery) {
+        this.setupSymbolDiscovery(config, gateway);
       }
     });
 
@@ -88,43 +87,6 @@ export class AdsConnectionManager extends EventEmitter {
 
     this.connections.set(config.id, gateway);
 
-    // Setup Symbol Discovery wenn konfiguriert
-    if (config.symbolDiscovery) {
-      const discovery = new AdsSymbolDiscovery(config.id, config.symbolDiscovery);
-
-      // Forward Symbol Discovery events
-      discovery.on('online-change-detected', (data) => {
-        console.log(`[ADS Manager] OnlineChange detected on ${config.name}`);
-        this.emit('online-change-detected', data);
-      });
-
-      discovery.on('symbols-discovered', (data) => {
-        console.log(`[ADS Manager] Discovered ${data.filtered} symbols on ${config.name}`);
-        this.emit('symbols-discovered', data);
-      });
-
-      discovery.on('variables-discovered', async (data) => {
-        console.log(`[ADS Manager] Auto-adding ${data.variables.length} variables on ${config.name}`);
-
-        // Automatisch Variablen hinzufügen
-        for (const variable of data.variables) {
-          try {
-            await this.addVariable(config.id, variable);
-          } catch (error) {
-            console.error(`[ADS Manager] Failed to auto-add variable ${variable.name}:`, error);
-          }
-        }
-
-        this.emit('variables-auto-added', data);
-      });
-
-      discovery.on('discovery-error', (data) => {
-        console.error(`[ADS Manager] Symbol discovery error on ${config.name}:`, data.error);
-        this.emit('discovery-error', data);
-      });
-
-      this.symbolDiscoveries.set(config.id, discovery);
-    }
 
     if (config.enabled) {
       await this.connectConnection(config.id);
@@ -376,5 +338,54 @@ export class AdsConnectionManager extends EventEmitter {
     const discovery = this.symbolDiscoveries.get(connectionId);
     const config = this.configs.get(connectionId);
     return !!discovery && !!config?.symbolDiscovery?.autoDiscovery;
+  }
+
+  /**
+   * Setup Symbol Discovery nach erfolgreicher Verbindung
+   */
+  private setupSymbolDiscovery(config: AdsConnectionConfig, gateway: AdsGateway): void {
+    const client = gateway.getClient();
+    if (!client) {
+      console.error(`[ADS Manager] ADS Client not available for connection ${config.id}`);
+      return;
+    }
+
+    const discovery = new AdsSymbolDiscovery(config.id, config.symbolDiscovery!, client);
+
+    // Forward Symbol Discovery events
+    discovery.on('online-change-detected', (data) => {
+      console.log(`[ADS Manager] OnlineChange detected on ${config.name}`);
+      this.emit('online-change-detected', data);
+    });
+
+    discovery.on('symbols-discovered', (data) => {
+      console.log(`[ADS Manager] Discovered ${data.filtered} symbols on ${config.name}`);
+      this.emit('symbols-discovered', data);
+    });
+
+    discovery.on('variables-discovered', async (data) => {
+      console.log(`[ADS Manager] Auto-adding ${data.variables.length} variables on ${config.name}`);
+
+      // Automatisch Variablen hinzufügen
+      for (const variable of data.variables) {
+        try {
+          await this.addVariable(config.id, variable);
+        } catch (error) {
+          console.error(`[ADS Manager] Failed to auto-add variable ${variable.name}:`, error);
+        }
+      }
+
+      this.emit('variables-auto-added', data);
+    });
+
+    discovery.on('discovery-error', (data) => {
+      console.error(`[ADS Manager] Symbol discovery error on ${config.name}:`, data.error);
+      this.emit('discovery-error', data);
+    });
+
+    this.symbolDiscoveries.set(config.id, discovery);
+    
+    // Starte Symbol Discovery
+    discovery.start();
   }
 }
