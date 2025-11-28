@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>MQTT-ADS Bridge - Dashboard</title>
   <style>
     * {
@@ -643,6 +646,28 @@
       to { transform: rotate(360deg); }
     }
 
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOut {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .container {
@@ -1092,20 +1117,52 @@
           <p style="color: var(--text-secondary); margin-bottom: 1rem;">
             <span id="network-info">Scanning your network or enter specific IP/hostname</span>
           </p>
+          
+          <!-- Port Range Selection -->
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">Port Range</label>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;" onclick="setPortRange(800, 900)">Standard (800-900)</button>
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;" onclick="setPortRange(851, 851)">Nur TC3 (851)</button>
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;" onclick="setPortRange(801, 801)">Nur TC2 (801)</button>
+              <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;" onclick="setPortRange(800, 1000)">Erweitert (800-1000)</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center; max-width: 400px;">
+              <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Von Port</label>
+                <input type="number" id="portStart" value="800" min="1" max="65535" style="width: 100%; padding: 0.5rem; border: 2px solid var(--border); border-radius: 6px; font-size: 0.875rem;" />
+              </div>
+              <div style="padding-top: 1.5rem; font-size: 1.2rem; color: var(--text-secondary);">—</div>
+              <div>
+                <label style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Bis Port</label>
+                <input type="number" id="portEnd" value="900" min="1" max="65535" style="width: 100%; padding: 0.5rem; border: 2px solid var(--border); border-radius: 6px; font-size: 0.875rem;" />
+              </div>
+            </div>
+          </div>
+
           <div class="scan-controls">
             <div style="flex: 1; display: flex; gap: 0.5rem;">
               <input 
                 type="text" 
                 id="target-input" 
-                placeholder="192.168.1.100 or hostname (leave empty for network scan)" 
+                placeholder="192.168.3.0/24 oder leer lassen für Auto-Detection" 
                 style="flex: 1; padding: 0.75rem; border: 2px solid var(--border); border-radius: 8px; font-size: 0.875rem;"
               />
-              <button class="btn btn-primary" onclick="startScan()" id="scanBtn">
+              <button class="btn btn-primary" onclick="startNetworkScan()" id="scanBtn">
                 <span>🔍</span>
                 <span>Scan</span>
               </button>
             </div>
           </div>
+          
+          <!-- Progress Bar -->
+          <div id="scanProgressContainer" style="margin-top: 1rem; display: none;">
+            <div style="width: 100%; height: 8px; background: var(--bg-gray); border-radius: 4px; overflow: hidden; margin-bottom: 0.5rem;">
+              <div id="scanProgressBar" style="height: 100%; background: linear-gradient(90deg, var(--primary), var(--error)); transition: width 0.3s ease; width: 0%;"></div>
+            </div>
+            <div id="scanProgressText" style="text-align: center; color: var(--text-secondary); font-size: 0.875rem;">Starte Scan...</div>
+          </div>
+          
           <div id="scan-results" class="scan-results"></div>
         </div>
       </div>
@@ -1356,7 +1413,17 @@
         // Update header status
         document.getElementById('connectionStatus').textContent = 'Online';
         document.getElementById('header-mqtt').textContent = data.mqtt?.clients || 0;
-        document.getElementById('header-vars').textContent = data.variables || 0;
+        // Lade Variablen und zähle sie
+        fetch(`${API_BASE}/api/variables`)
+          .then(res => res.json())
+          .then(vars => {
+            document.getElementById('header-vars').textContent = vars.length || 0;
+            document.getElementById('stat-variables').textContent = vars.length || 0;
+          })
+          .catch(() => {
+            document.getElementById('header-vars').textContent = '0';
+            document.getElementById('stat-variables').textContent = '0';
+          });
         document.getElementById('header-routes').textContent = `${onlineRoutes}/${totalRoutes}`;
         document.getElementById('header-uptime').textContent = formatUptime(data.uptime || 0);
         document.getElementById('header-updates-rate').textContent = updatesRate;
@@ -1461,22 +1528,25 @@
           return;
         }
 
-        // Group variables by structure (path segments)
-        const tree = {};
+        // Einfache Gruppierung nach erstem Präfix
+        const grouped = {};
+        
         variables.forEach(v => {
-          // Prüfe ob es eine echte Struktur ist (hat isStruct Property)
-          if (v.isStruct && v.members) {
-            // Echte Struktur mit Members
-            tree[v.path] = { isStruct: true, members: v.members };
+          const parts = v.name.split('.');
+          if (parts.length > 1) {
+            const prefix = parts[0];
+            if (!grouped[prefix]) {
+              grouped[prefix] = [];
+            }
+            grouped[prefix].push(v);
           } else {
-            // Normale Variable (auch wenn Name Punkte enthält wie GVL.Motor.Speed)
-            tree[v.path] = { isStruct: false, variable: v };
+            if (!grouped['_singles']) {
+              grouped['_singles'] = [];
+            }
+            grouped['_singles'].push(v);
           }
         });
 
-        // Render tree with header
-        const hasStructures = Object.values(tree).some(item => item.isStruct);
-        
         let html = '';
         
         // Add table header
@@ -1487,55 +1557,68 @@
             <div>ADS Path</div>
             <div>Type</div>
             <div>Value</div>
-            <div>Rate</div>
+            <div title="Time since last update">Age</div>
             <div>Last Update</div>
             <div>Actions</div>
           </div>
         `;
         
-        // Render variables
-        html += Object.keys(tree).sort().map(key => {
-          const item = tree[key];
-          if (item.isStruct) {
-            return `
-              <div class="payload-struct" style="margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
-                <div class="payload-struct-header" onclick="toggleStruct('${key}')" style="padding: 1rem; background: rgba(255,255,255,0.05); cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
-                  <span id="struct-icon-${key}" style="font-size: 1.2em;">▶</span>
-                  <strong style="color: var(--primary);">${key}</strong>
-                  <span class="badge badge-info" style="margin-left: 0.5rem;">${item.members.length} members</span>
-                </div>
-                <div id="struct-content-${key}" style="display: none; padding: 0.5rem 1rem;">
-                  ${item.members.map(m => `
-                    <div style="padding: 0.75rem; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1.5fr 2.5fr 2fr 1fr 1.5fr 1fr 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.9em;">
-                      <div><strong>${m.name.split('.').pop()}</strong></div>
-                      <div><code style="color: var(--primary-light); font-size: 0.85em;">${m.mqttTopic}</code></div>
-                      <div><code style="color: var(--primary-light);">${m.path}</code></div>
-                      <div><span class="badge badge-success">${m.type}</span></div>
-                      <div id="value-${m.id}" style="font-family: monospace; color: #fbbf24;">-</div>
-                      <div id="rate-${m.id}" style="color: var(--text-secondary); font-size: 0.85em;">0µs</div>
-                      <div id="lastupdate-${m.id}" style="color: var(--text-secondary); font-size: 0.8em;">-</div>
-                      <div><button class="btn btn-danger" onclick="deleteVariable('${m.id}')">Delete</button></div>
-                    </div>
-                  `).join('')}
-                </div>
+        // Render gruppierte Variablen
+        Object.keys(grouped).sort().forEach(groupKey => {
+          if (groupKey === '_singles') return; // Singles am Ende
+          
+          const members = grouped[groupKey];
+          const structId = groupKey.replace(/[^a-zA-Z0-9]/g, '_');
+          
+          html += `
+            <div class="payload-struct" style="margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-card);">
+              <div class="payload-struct-header" onclick="toggleStruct('${structId}')" style="padding: 1rem; background: linear-gradient(135deg, rgba(220,38,38,0.1) 0%, rgba(153,27,27,0.05) 100%); cursor: pointer; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid var(--border);">
+                <span id="struct-icon-${structId}" style="font-size: 1.2em; color: var(--primary);">▶</span>
+                <strong style="color: var(--primary); font-size: 1.05em;">${groupKey}</strong>
+                <span class="badge badge-info" style="margin-left: 0.5rem; background: var(--primary); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em;">${members.length}</span>
               </div>
-            `;
-          } else {
-            const v = item.variable;
-            return `
+              <div id="struct-content-${structId}" style="display: none; padding: 0.5rem 0;">
+                ${members.sort((a, b) => a.name.localeCompare(b.name)).map(m => {
+                  const ageMs = m.timestamp ? (Date.now() - m.timestamp) : null;
+                  const ageDisplay = ageMs !== null ? (ageMs < 1000 ? `${ageMs}ms` : `${Math.round(ageMs / 1000)}s`) : '-';
+                  const lastUpdateDisplay = m.lastUpdate ? new Date(m.lastUpdate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+                  return `
+                  <div style="padding: 0.75rem; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1.5fr 2.5fr 2fr 1fr 1.5fr 1fr 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.9em;">
+                    <div><strong>${m.name.split('.').pop()}</strong></div>
+                    <div><code style="color: var(--primary-light); font-size: 0.85em;">${m.mqttTopic}</code></div>
+                    <div><code style="color: var(--primary-light);">${m.path}</code></div>
+                    <div><span class="badge badge-success">${m.type}</span></div>
+                    <div id="value-${m.id}" style="font-family: monospace; color: #fbbf24;">${m.value !== undefined && m.value !== null ? (typeof m.value === 'object' ? JSON.stringify(m.value) : m.value) : '-'}</div>
+                    <div id="age-${m.id}" style="color: var(--text-secondary); font-size: 0.85em;">${ageDisplay}</div>
+                    <div id="lastupdate-${m.id}" style="color: var(--text-secondary); font-size: 0.8em;">${lastUpdateDisplay}</div>
+                    <div><button class="btn btn-danger" onclick="deleteVariable('${m.id}')">Delete</button></div>
+                  </div>
+                `}).join('')}
+              </div>
+            </div>
+          `;
+        });
+        
+        // Singles am Ende
+        if (grouped['_singles']) {
+          grouped['_singles'].forEach(v => {
+            const ageMs = v.timestamp ? (Date.now() - v.timestamp) : null;
+            const ageDisplay = ageMs !== null ? (ageMs < 1000 ? `${ageMs}ms` : `${Math.round(ageMs / 1000)}s`) : '-';
+            const lastUpdateDisplay = v.lastUpdate ? new Date(v.lastUpdate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+            html += `
               <div style="padding: 0.75rem; margin-bottom: 0.5rem; border: 1px solid var(--border); border-radius: 8px; display: grid; grid-template-columns: 1.5fr 2.5fr 2fr 1fr 1.5fr 1fr 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.9em;">
-                <div><strong>${v.name.split('.').pop()}</strong></div>
+                <div><strong>${v.name}</strong></div>
                 <div><code style="color: var(--primary-light); font-size: 0.85em;">${v.mqttTopic}</code></div>
                 <div><code style="color: var(--primary-light);">${v.path}</code></div>
                 <div><span class="badge badge-success">${v.type}</span></div>
-                <div id="value-${v.id}" style="font-family: monospace; color: #fbbf24;">-</div>
-                <div id="rate-${v.id}" style="color: var(--text-secondary); font-size: 0.85em;">0µs</div>
-                <div id="lastupdate-${v.id}" style="color: var(--text-secondary); font-size: 0.8em;">-</div>
+                <div id="value-${v.id}" style="font-family: monospace; color: #fbbf24;">${v.value !== undefined && v.value !== null ? (typeof v.value === 'object' ? JSON.stringify(v.value) : v.value) : '-'}</div>
+                <div id="age-${v.id}" style="color: var(--text-secondary); font-size: 0.85em;">${ageDisplay}</div>
+                <div id="lastupdate-${v.id}" style="color: var(--text-secondary); font-size: 0.8em;">${lastUpdateDisplay}</div>
                 <div><button class="btn btn-danger" onclick="deleteVariable('${v.id}')">Delete</button></div>
               </div>
             `;
-          }
-        }).join('');
+          });
+        }
         
         container.innerHTML = html;
 
@@ -1744,23 +1827,135 @@
       };
 
       try {
+        // Step 1: Add Route
         const response = await fetch(`${API_BASE}/api/ads/routes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(route)
         });
 
-        if (response.ok) {
-          closeModal('addRouteModal');
-          event.target.reset();
-          loadRoutes();
-        } else {
+        if (!response.ok) {
           alert('Failed to add route');
+          return;
         }
+
+        const result = await response.json();
+        const routeId = result.id;
+
+        // Step 2: Close modal
+        closeModal('addRouteModal');
+        event.target.reset();
+        
+        // Show notification
+        showNotification('Route hinzugefügt! Aktiviere Verbindung und starte Symbol-Erkennung...', 'info');
+
+        // Step 3: Activate route and create connection
+        try {
+          const activateResponse = await fetch(`${API_BASE}/api/ads/routes/${routeId}/activate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+
+          if (!activateResponse.ok) {
+            showNotification('⚠️ Route hinzugefügt, aber Aktivierung fehlgeschlagen', 'warning');
+            loadRoutes();
+            return;
+          }
+
+          const activateResult = await activateResponse.json();
+          const connectionId = activateResult.connectionId;
+
+          showNotification('✅ Verbindung hergestellt! Starte Symbol-Erkennung...', 'success');
+
+          // Step 4: Trigger automatic symbol discovery
+          setTimeout(async () => {
+            try {
+              const discoverResponse = await fetch(`${API_BASE}/api/symbols/discover`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ connectionId: connectionId })
+              });
+
+              if (discoverResponse.ok) {
+                showNotification('✅ Symbol-Erkennung läuft! Variablen werden geladen...', 'success');
+                
+                // Wait for symbols to be discovered (symbol discovery takes a moment)
+                setTimeout(() => {
+                  loadRoutes();
+                  loadVariables();
+                  showNotification('✅ Alle Variablen aus der SPS wurden automatisch geladen!', 'success');
+                  // Switch to variables tab to show results
+                  switchTab('variables');
+                }, 3000);
+              } else {
+                showNotification('⚠️ Verbindung OK, aber Symbol-Erkennung fehlgeschlagen', 'warning');
+                loadRoutes();
+              }
+            } catch (discoverError) {
+              console.error('Symbol discovery failed:', discoverError);
+              showNotification('⚠️ Verbindung OK, aber Symbol-Erkennung fehlgeschlagen', 'warning');
+              loadRoutes();
+            }
+          }, 1000);
+
+        } catch (activateError) {
+          console.error('Route activation failed:', activateError);
+          showNotification('⚠️ Route hinzugefügt, aber Aktivierung fehlgeschlagen', 'warning');
+          loadRoutes();
+        }
+
       } catch (error) {
         console.error('Failed to add route:', error);
         alert('Error adding route');
       }
+    }
+
+    // Helper: Show notification
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 5rem;
+        right: 2rem;
+        background: ${type === 'success' ? 'var(--success)' : type === 'warning' ? 'var(--warning)' : 'var(--primary)'};
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 1000;
+        font-weight: 500;
+        max-width: 400px;
+        animation: slideIn 0.3s ease-out;
+      `;
+      notification.textContent = message;
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+      }, 5000);
+    }
+
+    // Helper: Switch tab
+    function switchTab(tabName) {
+      const tabs = document.querySelectorAll('.nav-link');
+      const contents = document.querySelectorAll('.tab-content');
+      
+      tabs.forEach(tab => {
+        if (tab.getAttribute('onclick')?.includes(tabName)) {
+          tab.classList.add('active');
+        } else {
+          tab.classList.remove('active');
+        }
+      });
+
+      contents.forEach(content => {
+        if (content.id === `${tabName}-tab`) {
+          content.classList.add('active');
+        } else {
+          content.classList.remove('active');
+        }
+      });
     }
 
     // Add Variable
@@ -1870,6 +2065,191 @@ eige            Scan network or enter IP/hostname directly - Ports 800-1000 (Ful
     // Network Scanner with live progress (Server-Sent Events)
     let currentEventSource = null;
     
+    // Port Range Helper
+    function setPortRange(start, end) {
+      document.getElementById('portStart').value = start;
+      document.getElementById('portEnd').value = end;
+    }
+
+    // New Network Scanner with Port Range
+    async function startNetworkScan() {
+      const scanBtn = document.getElementById('scanBtn');
+      const targetInput = document.getElementById('target-input');
+      const resultsDiv = document.getElementById('scan-results');
+      const progressContainer = document.getElementById('scanProgressContainer');
+      const progressBar = document.getElementById('scanProgressBar');
+      const progressText = document.getElementById('scanProgressText');
+      const portStart = parseInt(document.getElementById('portStart').value);
+      const portEnd = parseInt(document.getElementById('portEnd').value);
+      const target = targetInput.value.trim();
+
+      // Validation
+      if (portStart > portEnd) {
+        alert('Start-Port muss kleiner oder gleich End-Port sein!');
+        return;
+      }
+
+      // Close previous event source if exists
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+
+      scanBtn.disabled = true;
+      scanBtn.innerHTML = '<span class="spinner"></span><span>Scanning...</span>';
+      progressContainer.style.display = 'block';
+      progressBar.style.width = '0%';
+      progressText.textContent = 'Starte Scan...';
+      resultsDiv.innerHTML = '';
+
+      try {
+        const body = {
+          network: target || undefined,
+          autoDetect: !target,
+          fullPortScan: true,
+          portRangeStart: portStart,
+          portRangeEnd: portEnd
+        };
+
+        const response = await fetch(`${API_BASE}/api/ads/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // Read SSE stream
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = JSON.parse(line.substring(6));
+              handleNetworkScanProgress(data, resultsDiv, progressBar, progressText);
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('Scan failed:', error);
+        resultsDiv.innerHTML = '<div class="alert alert-error">❌ Scan failed: ' + error.message + '</div>';
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.innerHTML = '<span>🔍</span><span>Scan</span>';
+        setTimeout(() => {
+          progressContainer.style.display = 'none';
+        }, 2000);
+      }
+    }
+
+    // Handle Network Scan Progress
+    function handleNetworkScanProgress(data, resultsDiv, progressBar, progressText) {
+      if (data.complete) {
+        if (data.success === false) {
+          resultsDiv.innerHTML = '<div class="alert alert-error">❌ ' + (data.error || 'Scan failed') + '</div>';
+          progressBar.style.width = '100%';
+          progressText.textContent = 'Scan fehlgeschlagen';
+          return;
+        }
+
+        progressBar.style.width = '100%';
+        progressText.textContent = `✅ Scan abgeschlossen! ${data.devices?.length || 0} Gerät(e) gefunden`;
+        
+        if (data.devices && data.devices.length > 0) {
+          displayScanResults(data.devices, resultsDiv);
+        } else {
+          resultsDiv.innerHTML = '<div class="alert alert-warning">⚠️ Keine ADS/TwinCAT Geräte gefunden</div>';
+        }
+        return;
+      }
+
+      // Live progress update
+      if (data.scanned !== undefined && data.total !== undefined) {
+        const percentage = Math.round((data.scanned / data.total) * 100);
+        progressBar.style.width = percentage + '%';
+        progressText.textContent = `${data.scanned}/${data.total} Hosts gescannt - ${data.found || 0} Gerät(e) gefunden`;
+      }
+
+      // Show live devices
+      if (data.devices && data.devices.length > 0) {
+        displayScanResults(data.devices, resultsDiv);
+      }
+    }
+
+    // Display Scan Results
+    function displayScanResults(devices, resultsDiv) {
+      let html = `
+        <table class="data-table" style="width: 100%; margin-top: 1rem; border-collapse: collapse; background: var(--bg-card); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <thead>
+            <tr style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white;">
+              <th style="padding: 1rem; text-align: left;">Status</th>
+              <th style="padding: 1rem; text-align: left;">Name</th>
+              <th style="padding: 1rem; text-align: left;">IP</th>
+              <th style="padding: 1rem; text-align: left;">Port</th>
+              <th style="padding: 1rem; text-align: left;">Runtime</th>
+              <th style="padding: 1rem; text-align: left;">NetID</th>
+              <th style="padding: 1rem; text-align: center;">Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      devices.forEach((device, index) => {
+        const isConfigured = device.isConfigured;
+        const statusIcon = isConfigured ? '✅' : '🟢';
+        const statusText = isConfigured ? 'Konfiguriert' : 'Neu';
+        const bgColor = index % 2 === 0 ? 'var(--bg-gray)' : 'white';
+        
+        html += `
+          <tr style="background: ${bgColor};">
+            <td style="padding: 0.75rem;">
+              <span style="font-size: 1.2rem;">${statusIcon}</span>
+              <span style="font-size: 0.875rem; color: ${isConfigured ? 'var(--success)' : 'var(--primary)'}; margin-left: 0.5rem;">${statusText}</span>
+            </td>
+            <td style="padding: 0.75rem; font-weight: 600;">${device.name || device.hostname || 'Unknown'}</td>
+            <td style="padding: 0.75rem; font-family: monospace;">${device.ipAddress}</td>
+            <td style="padding: 0.75rem; font-family: monospace; color: var(--primary);">${device.port}</td>
+            <td style="padding: 0.75rem;"><span class="badge" style="background: var(--primary-light); color: var(--primary);">${device.runtime || 'N/A'}</span></td>
+            <td style="padding: 0.75rem; font-family: monospace; font-size: 0.875rem;">${device.netId}</td>
+            <td style="padding: 0.75rem; text-align: center;">
+              ${isConfigured 
+                ? `<button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;" onclick="alert('Route bereits konfiguriert: ${device.configuredRouteName}')">📋 Details</button>`
+                : `<button class="btn btn-primary" style="font-size: 0.75rem; padding: 0.4rem 0.8rem;" onclick="quickAddRoute('${device.name || device.hostname}', '${device.netId}', '${device.ipAddress}', ${device.port})">➕ Hinzufügen</button>`
+              }
+            </td>
+          </tr>
+        `;
+      });
+
+      html += `
+          </tbody>
+        </table>
+      `;
+
+      resultsDiv.innerHTML = html;
+    }
+
+    // Quick Add Route from Scan
+    function quickAddRoute(name, netId, ipAddress, port) {
+      document.querySelector('input[name="name"]').value = name || `PLC-${ipAddress.split('.').pop()}`;
+      document.querySelector('input[name="netId"]').value = netId;
+      document.querySelector('input[name="ipAddress"]').value = ipAddress;
+      document.querySelector('input[name="port"]').value = port;
+      openAddRouteModal();
+    }
+    
     async function startScan() {
       const scanBtn = document.getElementById('scanBtn');
       const targetInput = document.getElementById('target-input');
@@ -1887,12 +2267,12 @@ eige            Scan network or enter IP/hostname directly - Ports 800-1000 (Ful
       
       resultsDiv.innerHTML = `
         <div class="alert alert-warning">
-          <div>Scanning ${target || 'your network'} for ADS/TwinCAT devices (ports 800-900)...</div>
+          <div>🔍 Scanning ${target || 'your network'} for ADS/TwinCAT devices (ports 800-1000)...</div>
           <div id="scan-progress" style="margin-top: 0.5rem;">
-            <div style="background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden;">
-              <div id="progress-bar" style="background: var(--gold); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            <div style="background: rgba(255,255,255,0.2); height: 10px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);">
+              <div id="progress-bar" style="background: linear-gradient(90deg, var(--primary), var(--gold)); height: 100%; width: 0%; transition: width 0.5s ease-out;"></div>
             </div>
-            <small id="progress-text" style="margin-top: 0.25rem; display: block;">Starting scan...</small>
+            <small id="progress-text" style="margin-top: 0.5rem; display: block; font-weight: 500;">⏳ Starting scan...</small>
           </div>
         </div>
         <div id="scan-devices-live"></div>
@@ -2164,6 +2544,12 @@ eige            Scan network or enter IP/hostname directly - Ports 800-1000 (Ful
         loadDashboard(); // Always update header and dropdown
         loadErrors(); // Always check for errors
         loadSymbolDiscovery(); // Check for discovered symbols
+        
+        // Reload active tab data to show new variables
+        const activeTab = document.querySelector('.tab-button.active');
+        if (activeTab) {
+          loadTabData(activeTab.dataset.tab);
+        }
       }, 5000);
     }
 
@@ -2175,8 +2561,8 @@ eige            Scan network or enter IP/hostname directly - Ports 800-1000 (Ful
       loadSymbolDiscovery();
       startAutoRefresh();
       detectNetwork();
-      // Load initial tab data (Routes is default)
-      loadTabData('routes');
+      // Load initial tab data (Variables is default)
+      loadTabData('variables');
     });
 
     // Close modals on escape key

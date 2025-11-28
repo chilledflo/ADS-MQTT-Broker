@@ -2,7 +2,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { AdsGateway, AdsVariable } from './ads-gateway';
+import { AdsVariable } from './ads-gateway';
+import { AdsConnectionManager } from './ads-connection-manager';
 import { MqttBroker } from './mqtt-broker';
 import { AuditLogger } from './audit-logger';
 import { NetworkScanner } from './network-scanner';
@@ -34,7 +35,7 @@ export class RestApi {
   constructor(
     private config: ApiConfig,
     private mqttBroker: MqttBroker,
-    private adsGateway: AdsGateway
+    private adsManager: AdsConnectionManager
   ) {
     this.app = express();
     this.auditLogger = new AuditLogger();
@@ -52,6 +53,8 @@ export class RestApi {
     
     // Serve static files from root directory
     this.app.use(express.static(path.join(__dirname, '..')));
+    // Serve static files from public directory
+    this.app.use(express.static(path.join(__dirname, '..', 'public')));
 
     this.app.use((req: any, res: any, next: any) => {
       console.log(`[API] ${req.method} ${req.path}`);
@@ -68,15 +71,22 @@ export class RestApi {
     // Health check
     this.app.get('/api/health', (req: Request, res: Response) => {
       const uptime = Math.floor((Date.now() - this.startTime) / 1000);
-      const variables = this.adsGateway.getAllVariables();
+      const connections = this.adsManager.getAllConnections();
+      const allVariables = connections.flatMap((conn: any) => {
+        const gateway = this.adsManager.getGateway(conn.id);
+        return gateway ? gateway.getAllVariables() : [];
+      });
 
+      const statuses = this.adsManager.getConnectionsStatus();
+      
       res.json({
-        status: this.adsGateway.isConnected() ? 'online' : 'offline',
+        status: statuses.some((c: any) => c.connected) ? 'online' : 'offline',
         uptime,
         timestamp: Date.now(),
         ads: {
-          connected: this.adsGateway.isConnected(),
-          variables: variables.length,
+          connections: connections.length,
+          connected: statuses.filter((c: any) => c.connected).length,
+          variables: allVariables.length,
         },
         mqtt: {
           clients: this.mqttBroker.getClients(),
@@ -87,13 +97,32 @@ export class RestApi {
 
     // Get all variables
     this.app.get('/api/variables', (req: Request, res: Response) => {
-      const variables = this.adsGateway.getAllVariables();
-      res.json(variables);
+      const connections = this.adsManager.getAllConnections();
+      const allVariables = connections.flatMap((conn: any) => {
+        const gateway = this.adsManager.getGateway(conn.id);
+        return gateway ? gateway.getAllVariables() : [];
+      });
+      
+      // Convert BigInt to string for JSON serialization
+      const serializedVariables = JSON.parse(JSON.stringify(allVariables, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+      ));
+      
+      res.json(serializedVariables);
     });
 
     // Get specific variable
     this.app.get('/api/variables/:id', (req: Request, res: Response) => {
-      const variable = this.adsGateway.getVariable(req.params.id);
+      const connections = this.adsManager.getAllConnections();
+      let variable: AdsVariable | undefined;
+      
+      for (const conn of connections) {
+        const gateway = this.adsManager.getGateway(conn.id);
+        if (gateway) {
+          variable = gateway.getVariable(req.params.id);
+          if (variable) break;
+        }
+      }
 
       if (!variable) {
         return res.status(404).json({ error: 'Variable not found' });
@@ -132,7 +161,11 @@ export class RestApi {
           mqttTopic: mqttTopic || `ads/${name.toLowerCase()}/value`,
         };
 
-        await this.adsGateway.addVariable(variable);
+        // TODO: Update to use connection ID from request
+        // const connectionId = req.body.connectionId || 'default';
+        // const gateway = this.adsManager.getGateway(connectionId);
+        // if (gateway) await gateway.addVariable(variable);
+        throw new Error('Adding variables requires connection ID - use connection manager API');
 
         this.auditLogger.log({
           action: 'CREATE',
@@ -166,7 +199,8 @@ export class RestApi {
     this.app.delete('/api/variables/:id', async (req: Request, res: Response) => {
       const clientInfo = (req as any).clientInfo;
       try {
-        const variable = this.adsGateway.getVariable(req.params.id);
+        // TODO: Find variable across all connections
+        const variable: AdsVariable | undefined = undefined;
 
         if (!variable) {
           this.auditLogger.log({
@@ -181,16 +215,17 @@ export class RestApi {
           return res.status(404).json({ error: 'Variable not found' });
         }
 
-        await this.adsGateway.removeVariable(req.params.id);
+        // TODO: Remove from correct connection
+        throw new Error('Removing variables requires connection ID - use connection manager API');
 
         this.auditLogger.log({
           action: 'DELETE',
           variableId: req.params.id,
-          variableName: variable.name,
+          variableName: variable?.name || 'unknown',
           userId: req.headers['x-user-id'] as string,
           userIp: clientInfo.userIp,
           userAgent: clientInfo.userAgent,
-          details: `Deleted variable: ${variable.name}`,
+          details: `Deleted variable: ${variable?.name || 'unknown'}`,
           status: 'SUCCESS',
         });
 
@@ -390,6 +425,69 @@ export class RestApi {
       }
     });
 
+    // Activate route and create connection with auto symbol discovery
+    this.app.post('/api/ads/routes/:id/activate', async (req: Request, res: Response) => {
+      try {
+        const route = this.adsRoutes.get(req.params.id);
+        if (!route) {
+          return res.status(404).json({ error: 'Route not found' });
+        }
+
+        // Create connection config
+        const connectionConfig: import('./ads-connection-manager').AdsConnectionConfig = {
+          id: route.id,
+          name: route.name,
+          host: route.ipAddress,
+          port: 48898, // ADS system service port
+          targetIp: route.ipAddress,
+          targetPort: route.port,
+          sourcePort: 0, // Auto-assign
+          enabled: true,
+          description: `Auto-activated route for ${route.name}`,
+          symbolDiscovery: {
+            autoDiscovery: true,
+            discoveryInterval: 10000,
+            autoAddVariables: false,
+            defaultPollInterval: 1000
+          }
+        };
+
+        // Add connection to manager
+        try {
+          await this.adsManager.addConnection(connectionConfig);
+          route.active = true;
+
+          this.auditLogger.log({
+            action: 'ACTIVATE_ROUTE',
+            userId: (req as any).clientInfo?.userIp || 'unknown',
+            details: `Activated route ${route.name} and created connection`,
+            status: 'SUCCESS'
+          });
+
+          res.json({ 
+            success: true, 
+            message: 'Route activated and connection created',
+            connectionId: route.id,
+            route: route
+          });
+        } catch (connectionError: any) {
+          this.auditLogger.log({
+            action: 'ACTIVATE_ROUTE',
+            userId: (req as any).clientInfo?.userIp || 'unknown',
+            details: `Failed to activate route ${route.name}: ${connectionError.message}`,
+            status: 'FAILED'
+          });
+
+          res.status(500).json({ 
+            success: false, 
+            error: connectionError.message 
+          });
+        }
+      } catch (error: any) {
+        res.status(500).json({ error: error.message, success: false });
+      }
+    });
+
     // Get network information
     this.app.get('/api/network/info', (req: Request, res: Response) => {
       try {
@@ -423,7 +521,7 @@ export class RestApi {
     // Network Scanner for ADS devices (Server-Sent Events for live progress)
     this.app.post('/api/ads/scan', async (req: Request, res: Response) => {
       try {
-        let { network, autoDetect, quickScan, fullPortScan } = req.body;
+        let { network, autoDetect, quickScan, fullPortScan, portRangeStart, portRangeEnd } = req.body;
         
         // Auto-detect network from client IP
         if (autoDetect) {
@@ -486,7 +584,14 @@ export class RestApi {
         if (quickScan) {
           devices = await this.networkScanner.quickScan(network);
         } else {
-          devices = await this.networkScanner.scanNetwork(network, fullPortScan || false, 50, onProgress);
+          devices = await this.networkScanner.scanNetwork(
+            network, 
+            fullPortScan || false, 
+            30, 
+            onProgress,
+            portRangeStart,
+            portRangeEnd
+          );
         }
 
         // Send final results
@@ -555,25 +660,37 @@ export class RestApi {
 
     // Symbol Discovery Endpoints
     this.app.get('/api/symbols/discovered', (req: Request, res: Response) => {
-      const discovery = this.adsGateway.getSymbolDiscovery();
-      if (!discovery) {
-        return res.status(503).json({
-          success: false,
-          error: 'Symbol discovery not initialized'
-        });
+      const connections = this.adsManager.getAllConnections();
+      const allSymbols: any[] = [];
+      
+      for (const conn of connections) {
+        const discovery = this.adsManager.getSymbolDiscovery(conn.id);
+        if (discovery) {
+          const symbols = discovery.getDiscoveredSymbols();
+          allSymbols.push(...symbols.map((s: any) => ({ ...s, connectionId: conn.id, connectionName: conn.name })));
+        }
       }
 
-      const symbols = discovery.getDiscoveredSymbols();
       res.json({
         success: true,
-        symbols,
-        count: symbols.length
+        symbols: allSymbols,
+        count: allSymbols.length
       });
     });
 
     this.app.post('/api/symbols/discover', async (req: Request, res: Response) => {
       try {
-        await this.adsGateway.triggerSymbolDiscovery();
+        const connectionId = req.body.connectionId || 'default';
+        const discovery = this.adsManager.getSymbolDiscovery(connectionId);
+        
+        if (!discovery) {
+          return res.status(404).json({
+            success: false,
+            error: 'Connection not found or symbol discovery not active'
+          });
+        }
+        
+        await discovery.triggerDiscovery();
         res.json({
           success: true,
           message: 'Symbol discovery triggered'
@@ -589,25 +706,25 @@ export class RestApi {
 
   private setupErrorHandlers(): void {
     // Listen for ADS Gateway errors
-    this.adsGateway.on('error', (error: Error) => {
+    // Listen for connection manager events
+    this.adsManager.on('connection-error', (data: any) => {
       this.errorManager.addError({
         level: 'error',
-        source: 'ADS Gateway',
-        message: error.message,
-        details: error
+        source: 'ADS Connection',
+        message: data.error?.message || 'Connection error',
+        details: data
       });
     });
 
-    // Listen for symbol discovery events
-    this.adsGateway.on('online-change-detected', (data) => {
+    this.adsManager.on('online-change-detected', (data: any) => {
       console.log(`[REST API] OnlineChange detected: ${data.symbolCount} symbols found`);
     });
 
-    this.adsGateway.on('variables-auto-added', (data) => {
+    this.adsManager.on('variables-auto-added', (data: any) => {
       console.log(`[REST API] ${data.variables.length} variables auto-added after OnlineChange`);
     });
 
-    this.adsGateway.on('discovery-error', (data) => {
+    this.adsManager.on('discovery-error', (data: any) => {
       this.errorManager.addError({
         level: 'warning',
         source: 'Symbol Discovery',

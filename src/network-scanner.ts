@@ -17,9 +17,10 @@ export interface ScannedDevice {
 export class NetworkScanner {
   // Beckhoff recommends scanning ports 800-1000 for ADS services
   private readonly ADS_PORT_RANGE_START = 800;
-  private readonly ADS_PORT_RANGE_END = 900; // Reduced from 1000 to 900 for faster scanning
-  private readonly COMMON_ADS_PORTS = [48898, 801, 851]; // Check these first
-  private readonly SCAN_TIMEOUT = 300; // 300ms per port for faster scanning
+  private readonly ADS_PORT_RANGE_END = 1000; // Full range for comprehensive scanning
+  private readonly COMMON_ADS_PORTS = [851, 801]; // Runtime ports (TwinCAT 3, 2)
+  private readonly ADS_SYSTEM_SERVICE_PORT = 48898; // ADS Router/System Service
+  private readonly SCAN_TIMEOUT = 200; // 200ms per port for faster scanning
 
   /**
    * Parse network CIDR notation (e.g., "192.168.1.0/24")
@@ -135,9 +136,6 @@ export class NetworkScanner {
       } else if (port === 801) {
         runtime = 'TwinCAT 2';
         systemInfo = 'TwinCAT 2 Runtime (Port 801)';
-      } else if (port === 48898) {
-        runtime = 'TwinCAT 3';
-        systemInfo = 'TwinCAT 3 System Service (Port 48898)';
       } else if (port >= 800 && port <= 900) {
         runtime = 'TwinCAT';
         systemInfo = `TwinCAT System (Port ${port})`;
@@ -153,46 +151,88 @@ export class NetworkScanner {
 
   /**
    * Scan a single IP for ADS/TwinCAT services
-   * Checks common ports first, then scans full range 800-1000
+   * Checks ADS System Service (48898) first, then runtime ports, then scans full range
    */
-  private async scanHost(ip: string, fullScan: boolean = false): Promise<ScannedDevice | null> {
+  private async scanHost(
+    ip: string, 
+    fullScan: boolean = false,
+    portRangeStart: number = this.ADS_PORT_RANGE_START,
+    portRangeEnd: number = this.ADS_PORT_RANGE_END
+  ): Promise<ScannedDevice | null> {
     // Skip ping check - many firewalls block ICMP but allow TCP
     // Go directly to port scanning which is more reliable
 
-    // Check common ADS ports first for quick detection
-    for (const port of this.COMMON_ADS_PORTS) {
-      const isOpen = await this.checkAdsPort(ip, port);
-      
-      if (isOpen) {
-        const { runtime, systemInfo } = await this.getTwinCATInfo(ip, port);
-        const hostname = await this.getHostname(ip);
-        
-        // Generate NetID from IP (standard format: IP.1.1)
-        const netId = `${ip}.1.1`;
+    // FIRST: Check ADS System Service (48898) - this is the ADS Router
+    // Runtime ports like 851/801 might not be directly accessible but routed through 48898
+    const systemServiceOpen = await this.checkAdsPort(ip, this.ADS_SYSTEM_SERVICE_PORT);
+    if (systemServiceOpen) {
+      // System service is open - TwinCAT is running
+      // Default to TC3 Runtime (851) as the target port
+      const { runtime, systemInfo } = await this.getTwinCATInfo(ip, 851);
+      const hostname = await this.getHostname(ip);
+      const netId = `${ip}.1.1`;
 
-        return {
-          name: hostname || `PLC-${ip.split('.').pop()}`,
-          hostname,
-          netId,
-          ipAddress: ip,
-          port,
-          runtime,
-          systemInfo: systemInfo || `ADS Service on port ${port}`,
-          isReachable: true
-        };
-      }
+      return {
+        name: hostname || `PLC-${ip.split('.').pop()}`,
+        hostname,
+        netId,
+        ipAddress: ip,
+        port: 851, // TC3 Runtime port (accessed via ADS Router on 48898)
+        runtime: runtime || 'TwinCAT 3',
+        systemInfo: systemInfo || 'TwinCAT Runtime via ADS Router (Port 48898 → 851)',
+        isReachable: true
+      };
     }
 
-    // If no common port found and full scan is enabled, check entire range (800-900)
-    if (fullScan) {
-      for (let port = this.ADS_PORT_RANGE_START; port <= this.ADS_PORT_RANGE_END; port++) {
-        // Skip already checked common ports
-        if (this.COMMON_ADS_PORTS.includes(port)) continue;
+    // SECOND: Check direct runtime ports (for systems without ADS Router)
+    const commonPortPromises = this.COMMON_ADS_PORTS.map(port => 
+      this.checkAdsPort(ip, port).then(isOpen => ({ port, isOpen }))
+    );
+    
+    const commonResults = await Promise.all(commonPortPromises);
+    const openCommonPort = commonResults.find(r => r.isOpen);
+    
+    if (openCommonPort) {
+      const { runtime, systemInfo } = await this.getTwinCATInfo(ip, openCommonPort.port);
+      const hostname = await this.getHostname(ip);
+      const netId = `${ip}.1.1`;
 
-        const isOpen = await this.checkAdsPort(ip, port);
+      return {
+        name: hostname || `PLC-${ip.split('.').pop()}`,
+        hostname,
+        netId,
+        ipAddress: ip,
+        port: openCommonPort.port,
+        runtime,
+        systemInfo: systemInfo || `ADS Service on port ${openCommonPort.port}`,
+        isReachable: true
+      };
+    }
+
+    // If no common port found and full scan is enabled, check entire range
+    if (fullScan) {
+      // Scan in chunks for better performance
+      const chunkSize = 50;
+      for (let start = portRangeStart; start <= portRangeEnd; start += chunkSize) {
+        const end = Math.min(start + chunkSize - 1, portRangeEnd);
+        const portsToCheck = [];
         
-        if (isOpen) {
-          const { runtime, systemInfo } = await this.getTwinCATInfo(ip, port);
+        for (let port = start; port <= end; port++) {
+          // Skip already checked common ports
+          if (this.COMMON_ADS_PORTS.includes(port)) continue;
+          portsToCheck.push(port);
+        }
+        
+        // Check ports in parallel within chunk
+        const portPromises = portsToCheck.map(port => 
+          this.checkAdsPort(ip, port).then(isOpen => ({ port, isOpen }))
+        );
+        
+        const results = await Promise.all(portPromises);
+        const openPort = results.find(r => r.isOpen);
+        
+        if (openPort) {
+          const { runtime, systemInfo } = await this.getTwinCATInfo(ip, openPort.port);
           const hostname = await this.getHostname(ip);
           const netId = `${ip}.1.1`;
 
@@ -201,9 +241,9 @@ export class NetworkScanner {
             hostname,
             netId,
             ipAddress: ip,
-            port,
+            port: openPort.port,
             runtime,
-            systemInfo: systemInfo || `ADS Service on port ${port}`,
+            systemInfo: systemInfo || `ADS Service on port ${openPort.port}`,
             isReachable: true
           };
         }
@@ -216,28 +256,36 @@ export class NetworkScanner {
   /**
    * Scan entire network for ADS/TwinCAT devices
    * Uses parallel scanning with concurrency limit
-   * @param fullPortScan - If true, scans all ports 800-900 (slower but more thorough)
+   * @param fullPortScan - If true, scans all ports 800-1000 (slower but more thorough)
    * @param onProgress - Optional callback for progress updates
+   * @param portRangeStart - Custom port range start (default: 800)
+   * @param portRangeEnd - Custom port range end (default: 1000)
    */
   async scanNetwork(
     network: string, 
     fullPortScan: boolean = false, 
-    maxConcurrency: number = 50,
-    onProgress?: (progress: { scanned: number, total: number, found: number, devices: ScannedDevice[] }) => void
+    maxConcurrency: number = 30, // Reduced from 50 for better stability
+    onProgress?: (progress: { scanned: number, total: number, found: number, devices: ScannedDevice[] }) => void,
+    portRangeStart?: number,
+    portRangeEnd?: number
   ): Promise<ScannedDevice[]> {
     const ips = this.parseNetwork(network);
     const devices: ScannedDevice[] = [];
     
+    // Use custom port range if provided
+    const startPort = portRangeStart || this.ADS_PORT_RANGE_START;
+    const endPort = portRangeEnd || this.ADS_PORT_RANGE_END;
+    
     console.log(`[Network Scanner] Starting ${fullPortScan ? 'FULL' : 'FAST'} scan of ${network} (${ips.length} hosts, ${maxConcurrency} concurrent)`);
     if (fullPortScan) {
-      console.log(`[Network Scanner] Scanning ports ${this.ADS_PORT_RANGE_START}-${this.ADS_PORT_RANGE_END} per host`);
+      console.log(`[Network Scanner] Scanning ports ${startPort}-${endPort} per host`);
     }
     
     // Scan in large batches for maximum speed
     for (let i = 0; i < ips.length; i += maxConcurrency) {
       const batch = ips.slice(i, i + maxConcurrency);
       const results = await Promise.all(
-        batch.map(ip => this.scanHost(ip, fullPortScan))
+        batch.map(ip => this.scanHost(ip, fullPortScan, startPort, endPort))
       );
 
       // Filter out null results and add to devices
@@ -247,7 +295,11 @@ export class NetworkScanner {
       // Call progress callback if provided
       const scanned = Math.min(i + maxConcurrency, ips.length);
       if (onProgress) {
-        onProgress({ scanned, total: ips.length, found: devices.length, devices: [...devices] });
+        try {
+          onProgress({ scanned, total: ips.length, found: devices.length, devices: [...devices] });
+        } catch (error) {
+          console.error('[Network Scanner] Progress callback error:', error);
+        }
       }
 
       // Progress logging

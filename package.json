@@ -1,7 +1,7 @@
 {
-  "name": "mqtt-ads-bridge",
+  "name": "ads-mqtt-broker-nodejs",
   "version": "4.0.0",
-  "description": "Production-ready MQTT-ADS Bridge with automatic PLC variable discovery, network scanning, and real-time synchronization",
+  "description": "Production-ready ADS-MQTT Broker with Beckhoff TwinCAT integration, real-time notifications, REST API and admin dashboard",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
@@ -39,6 +39,7 @@
   "license": "MIT",
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "ads-client": "^2.1.0",
     "aedes": "^0.46.3",
     "better-sqlite3": "^12.4.1",
     "bull": "^4.16.5",

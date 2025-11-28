@@ -107,6 +107,28 @@ export class PersistenceLayer {
       CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs_persistent (timestamp DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_variable ON audit_logs_persistent (variableId, timestamp DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs_persistent (userId, timestamp DESC);
+
+      CREATE TABLE IF NOT EXISTS ads_connections (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        targetIp TEXT NOT NULL,
+        targetPort INTEGER NOT NULL,
+        sourcePort INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        description TEXT,
+        autoDiscovery INTEGER DEFAULT 1,
+        discoveryInterval INTEGER DEFAULT 30000,
+        autoAddVariables INTEGER DEFAULT 1,
+        defaultPollInterval INTEGER DEFAULT 1000,
+        symbolFilter TEXT,
+        createdAt INTEGER NOT NULL,
+        lastConnected INTEGER,
+        lastError TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_connection_enabled ON ads_connections (enabled);
     `);
   }
 
@@ -394,7 +416,7 @@ export class PersistenceLayer {
   }
 
   getDatabaseStats(): any {
-    const tables = ['variable_history', 'system_metrics', 'variable_metadata', 'audit_logs_persistent'];
+    const tables = ['variable_history', 'system_metrics', 'variable_metadata', 'audit_logs_persistent', 'ads_connections'];
     const stats: any = {};
 
     tables.forEach(table => {
@@ -411,6 +433,97 @@ export class PersistenceLayer {
     }
 
     return stats;
+  }
+
+  /**
+   * Speichert eine ADS-Verbindungskonfiguration
+   */
+  saveAdsConnection(config: any): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO ads_connections (
+        id, name, host, port, targetIp, targetPort, sourcePort, 
+        enabled, description, autoDiscovery, discoveryInterval, 
+        autoAddVariables, defaultPollInterval, symbolFilter, 
+        createdAt, lastConnected, lastError
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      config.id,
+      config.name,
+      config.host,
+      config.port,
+      config.targetIp,
+      config.targetPort,
+      config.sourcePort,
+      config.enabled ? 1 : 0,
+      config.description || null,
+      config.symbolDiscovery?.autoDiscovery ? 1 : 0,
+      config.symbolDiscovery?.discoveryInterval || 30000,
+      config.symbolDiscovery?.autoAddVariables ? 1 : 0,
+      config.symbolDiscovery?.defaultPollInterval || 1000,
+      config.symbolDiscovery?.symbolFilter?.source || null,
+      Date.now(),
+      config.lastConnected || null,
+      config.lastError || null
+    );
+  }
+
+  /**
+   * Lädt alle gespeicherten ADS-Verbindungen
+   */
+  loadAdsConnections(): any[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM ads_connections WHERE enabled = 1 ORDER BY name
+    `);
+    
+    const rows = stmt.all() as any[];
+    
+    return rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      host: row.host,
+      port: row.port,
+      targetIp: row.targetIp,
+      targetPort: row.targetPort,
+      sourcePort: row.sourcePort,
+      enabled: row.enabled === 1,
+      description: row.description,
+      symbolDiscovery: {
+        autoDiscovery: row.autoDiscovery === 1,
+        discoveryInterval: row.discoveryInterval,
+        autoAddVariables: row.autoAddVariables === 1,
+        defaultPollInterval: row.defaultPollInterval,
+        symbolFilter: row.symbolFilter ? new RegExp(row.symbolFilter) : undefined
+      },
+      lastConnected: row.lastConnected,
+      lastError: row.lastError
+    }));
+  }
+
+  /**
+   * Löscht eine ADS-Verbindung
+   */
+  deleteAdsConnection(connectionId: string): void {
+    const stmt = this.db.prepare('DELETE FROM ads_connections WHERE id = ?');
+    stmt.run(connectionId);
+  }
+
+  /**
+   * Aktualisiert den Verbindungsstatus
+   */
+  updateConnectionStatus(connectionId: string, connected: boolean, error?: string): void {
+    const stmt = this.db.prepare(`
+      UPDATE ads_connections 
+      SET lastConnected = ?, lastError = ?
+      WHERE id = ?
+    `);
+    
+    stmt.run(
+      connected ? Date.now() : null,
+      error || null,
+      connectionId
+    );
   }
 
   close(): void {

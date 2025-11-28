@@ -1,7 +1,8 @@
 import * as dotenv from 'dotenv';
 import { MqttBroker } from './mqtt-broker';
 import { AdsConnectionManager, AdsConnectionConfig } from './ads-connection-manager';
-import { RestApiV3 } from './rest-api';
+import { RestApi } from './rest-api';
+import { PersistenceLayer } from './persistence';
 
 // Load environment variables
 dotenv.config();
@@ -29,14 +30,18 @@ async function main() {
   console.log('='.repeat(60));
 
   try {
+    // Initialize Persistence Layer
+    console.log('[Main] Initializing Persistence Layer...');
+    const persistence = new PersistenceLayer();
+
     // Initialize MQTT Broker
     console.log('[Main] Initializing MQTT Broker...');
     const mqttBroker = new MqttBroker({ port: MQTT_PORT, host: MQTT_HOST });
     await mqttBroker.start();
 
-    // Initialize ADS Connection Manager
+    // Initialize ADS Connection Manager with persistence
     console.log('[Main] Initializing ADS Connection Manager...');
-    const adsManager = new AdsConnectionManager();
+    const adsManager = new AdsConnectionManager(persistence);
 
     // Setup event handlers for connection manager
     adsManager.on('connection-established', (data) => {
@@ -71,36 +76,42 @@ async function main() {
       }));
     });
 
-    // Add default ADS connection from environment if configured
+    // Add default ADS connection from environment if configured and not already loaded
     if (process.env.ADS_HOST && process.env.ADS_TARGET_IP) {
-      console.log('[Main] Adding default ADS connection from environment...');
+      const existingConnection = adsManager.getConnection('default');
+      
+      if (!existingConnection) {
+        console.log('[Main] Adding default ADS connection from environment...');
 
-      const defaultConfig: AdsConnectionConfig = {
-        id: 'default',
-        name: 'Default PLC',
-        host: process.env.ADS_HOST,
-        port: parseInt(process.env.ADS_PORT || '48898'),
-        targetIp: process.env.ADS_TARGET_IP,
-        targetPort: parseInt(process.env.ADS_TARGET_PORT || '801'),
-        sourcePort: parseInt(process.env.ADS_SOURCE_PORT || '32750'),
-        enabled: true,
-        description: 'Default PLC connection from .env file',
-        symbolDiscovery: {
-          autoDiscovery: true,
-          discoveryInterval: 30000, // Check every 30 seconds
-          autoAddVariables: true,
-          defaultPollInterval: 1000,
-          // Filter: nur Variablen aus GVL (Global Variable List)
-          symbolFilter: /^GVL\./
-        }
-      };
+        const defaultConfig: AdsConnectionConfig = {
+          id: 'default',
+          name: 'Default PLC',
+          host: process.env.ADS_HOST,
+          port: parseInt(process.env.ADS_PORT || '48898'),
+          targetIp: process.env.ADS_TARGET_IP,
+          targetPort: parseInt(process.env.ADS_TARGET_PORT || '801'),
+          sourcePort: parseInt(process.env.ADS_SOURCE_PORT || '32750'),
+          enabled: true,
+          description: 'Default PLC connection from .env file',
+          symbolDiscovery: {
+            autoDiscovery: true,
+            discoveryInterval: 30000, // Check every 30 seconds
+            autoAddVariables: true,
+            defaultPollInterval: 1, // 1ms Fallback (nur wenn Notification fehlschlägt)
+            // Kein Filter - alle Symbole akzeptieren
+            symbolFilter: undefined
+          }
+        };
 
-      await adsManager.addConnection(defaultConfig);
+        await adsManager.addConnection(defaultConfig);
+      } else {
+        console.log('[Main] Default connection already loaded from database');
+      }
     }
 
     // Initialize REST API v3
     console.log('[Main] Initializing REST API v3...');
-    const restApi = new RestApiV3(
+    const restApi = new RestApi(
       { port: API_PORT, host: API_HOST },
       mqttBroker,
       adsManager
@@ -108,11 +119,6 @@ async function main() {
 
     // Start REST API
     await restApi.start();
-
-    // Start monitoring
-    const monitoring = restApi.getMonitoring();
-    monitoring.setAdsConnectionManager(adsManager);
-    monitoring.setMqttBroker(mqttBroker);
 
     console.log('='.repeat(60));
     console.log('✓ ADS-MQTT Broker v3.0 is running');

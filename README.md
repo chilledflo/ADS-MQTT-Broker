@@ -1,6 +1,6 @@
-# ADS-MQTT Broker - Standalone Project
+# ADS-MQTT-Broker-NodeJS
 
-Ein produktionsreifer MQTT-Broker mit Beckhoff ADS-Gateway-Integration, REST API, Audit-Logging und Admin-Dashboard.
+Ein produktionsreifer MQTT-Broker mit Beckhoff ADS-Gateway-Integration, REST API, Audit-Logging und Admin-Dashboard. Optimiert für harte Echtzeit mit ADS Device Notifications (<5ms).
 
 ## 🎯 Features
 

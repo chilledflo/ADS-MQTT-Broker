@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { AdsGateway, AdsVariable } from './ads-gateway';
 import { AdsSymbolDiscovery, SymbolDiscoveryConfig, PlcSymbol } from './ads-symbol-discovery';
+import { PersistenceLayer } from './persistence';
 
 export interface AdsConnectionConfig {
   id: string;
@@ -40,9 +41,39 @@ export class AdsConnectionManager extends EventEmitter {
   private configs: Map<string, AdsConnectionConfig> = new Map();
   private symbolDiscoveries: Map<string, AdsSymbolDiscovery> = new Map();
   private variableToConnection: Map<string, string> = new Map(); // variableId -> connectionId
+  private persistence?: PersistenceLayer;
 
-  constructor() {
+  constructor(persistence?: PersistenceLayer) {
     super();
+    this.persistence = persistence;
+    
+    // Lade gespeicherte Verbindungen beim Start
+    if (this.persistence) {
+      this.loadSavedConnections();
+    }
+  }
+
+  /**
+   * Lädt gespeicherte Verbindungen aus der Datenbank
+   */
+  private async loadSavedConnections(): Promise<void> {
+    if (!this.persistence) return;
+
+    try {
+      const savedConnections = this.persistence.loadAdsConnections();
+      console.log(`[ADS Manager] Loading ${savedConnections.length} saved connection(s)...`);
+
+      for (const config of savedConnections) {
+        try {
+          await this.addConnection(config);
+          console.log(`[ADS Manager] ✓ Loaded connection: ${config.name}`);
+        } catch (error) {
+          console.error(`[ADS Manager] Failed to load connection ${config.name}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('[ADS Manager] Error loading saved connections:', error);
+    }
   }
 
   /**
@@ -87,6 +118,15 @@ export class AdsConnectionManager extends EventEmitter {
 
     this.connections.set(config.id, gateway);
 
+    // Speichere Verbindung in Datenbank
+    if (this.persistence) {
+      try {
+        this.persistence.saveAdsConnection(config);
+        console.log(`[ADS Manager] 💾 Connection saved to database: ${config.name}`);
+      } catch (error) {
+        console.error(`[ADS Manager] Failed to save connection to database:`, error);
+      }
+    }
 
     if (config.enabled) {
       await this.connectConnection(config.id);
@@ -109,6 +149,16 @@ export class AdsConnectionManager extends EventEmitter {
       for (const [varId, connId] of this.variableToConnection.entries()) {
         if (connId === connectionId) {
           this.variableToConnection.delete(varId);
+        }
+      }
+
+      // Lösche aus Datenbank
+      if (this.persistence) {
+        try {
+          this.persistence.deleteAdsConnection(connectionId);
+          console.log(`[ADS Manager] 🗑️ Connection deleted from database: ${connectionId}`);
+        } catch (error) {
+          console.error(`[ADS Manager] Failed to delete connection from database:`, error);
         }
       }
 
@@ -246,6 +296,13 @@ export class AdsConnectionManager extends EventEmitter {
   }
 
   /**
+   * Gibt ein Gateway für eine Connection zurück
+   */
+  getGateway(connectionId: string): AdsGateway | undefined {
+    return this.connections.get(connectionId);
+  }
+
+  /**
    * Gibt den Status aller Verbindungen zurück
    */
   getConnectionsStatus(): ConnectionStatus[] {
@@ -338,6 +395,13 @@ export class AdsConnectionManager extends EventEmitter {
     const discovery = this.symbolDiscoveries.get(connectionId);
     const config = this.configs.get(connectionId);
     return !!discovery && !!config?.symbolDiscovery?.autoDiscovery;
+  }
+
+  /**
+   * Gibt die Symbol Discovery Instanz für eine Verbindung zurück
+   */
+  getSymbolDiscovery(connectionId: string): AdsSymbolDiscovery | undefined {
+    return this.symbolDiscoveries.get(connectionId);
   }
 
   /**
