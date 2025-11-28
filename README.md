@@ -1,16 +1,28 @@
-# ADS-MQTT-Broker-NodeJS
+# ADS-MQTT-Broker
 
-Ein produktionsreifer MQTT-Broker mit Beckhoff ADS-Gateway-Integration, REST API, Audit-Logging und Admin-Dashboard. Optimiert für harte Echtzeit mit ADS Device Notifications (<5ms).
+Ein produktionsreifer MQTT-Broker mit Beckhoff ADS-Gateway-Integration, REST API, Audit-Logging und modernen Dashboards. Verfügbar als **Node.js** und **C++** Version mit harter Echtzeit (<5ms via ADS Device Notifications).
 
 ## 🎯 Features
 
+### Node.js Version (aktuelles Repository)
 - **MQTT Broker** - Aedes 5.0 Standard-konform (10.000+ msg/sec)
-- **ADS Gateway** - Automatisches Polling von Beckhoff TwinCAT Variablen
+- **ADS Gateway** - Automatische Symbol-Discovery und Variable Polling
+- **Multi-PLC Support** - Verwaltung mehrerer TwinCAT-PLCs
 - **REST API** - Mit Audit-Logging und Datenherkunft-Tracking
-- **Admin Dashboard** - Moderne Web-UI für Variablenverwaltung
+- **Angular Dashboard** - Moderne Industrial Red Theme UI mit Chart.js
+- **WebSocket Support** - Echtzeit-Updates für Live-Daten
 - **Audit Logging** - Vollständige Protokollierung aller Aktivitäten
-- **WebSocket Support** - Echtzeit-Updates
 - **Docker Ready** - Containerisierung für Production Deployment
+
+### C++ Version (separates Repository)
+- **Ultra-Low Latency** - <1ms Reaktionszeit mit ADS Notifications
+- **Multi-PLC Management** - Thread-sichere Verwaltung mehrerer PLCs
+- **Symbol Discovery** - Automatisches Auslesen der PLC-Symboltabelle
+- **Network Scanner** - Auto-Discovery von PLCs im Netzwerk
+- **Native Performance** - Optimiert mit AVX2, LTO, O3
+- **Cross-Platform** - Windows (MSVC) und Linux (GCC) Support
+
+👉 **C++ Repository**: [ADS-MQTT-Broker-C++](https://github.com/chilledflo/ADS-MQTT-Broker-C-)
 
 ## 📦 Installation
 
@@ -29,7 +41,9 @@ npm start
 
 | Service | URL | Port |
 |---------|-----|------|
-| Admin Dashboard | http://localhost:8080/admin-dashboard.html | 8080 |
+| Angular Dashboard | http://localhost:4200 | 4200 |
+| Admin Dashboard (Modern) | http://localhost:8080/admin-dashboard-modern.html | 8080 |
+| Admin Dashboard (Simple) | http://localhost:8080/admin-dashboard-simple.html | 8080 |
 | REST API | http://localhost:8080/api/ | 8080 |
 | MQTT Broker | mqtt://localhost:1883 | 1883 |
 | Health Check | http://localhost:8080/api/health | 8080 |
@@ -38,15 +52,39 @@ npm start
 
 ```
 ADS-MQTT-Broker/
-├── src/
-│   ├── index.ts              # Main Entry Point
-│   ├── ads-gateway.ts        # ADS Variable Polling
-│   ├── mqtt-broker.ts        # MQTT Broker
-│   ├── rest-api.ts           # REST API mit Audit-Logging
-│   └── audit-logger.ts       # Audit Logger Service
-├── dist/                     # Compiled JavaScript
-├── admin-dashboard.html      # Web Admin UI
-├── test-broker.js            # Test Script
+├── src/                            # Node.js Backend
+│   ├── index.ts                    # Main Entry Point
+│   ├── ads-gateway.ts              # ADS Variable Polling & Notifications
+│   ├── ads-connection-manager.ts   # Multi-PLC Connection Manager
+│   ├── ads-symbol-discovery.ts     # Automatische Symbol Discovery
+│   ├── mqtt-broker.ts              # MQTT Broker (Aedes)
+│   ├── rest-api.ts                 # REST API mit Audit-Logging
+│   ├── websocket-server.ts         # WebSocket für Live-Updates
+│   ├── audit-logger.ts             # Audit Logger Service
+│   ├── performance-monitor.ts      # Performance Monitoring
+│   ├── redis-cache.ts              # Redis Caching Layer
+│   └── monitoring.ts               # System Monitoring
+│
+├── ads-dashboard-angular/          # Angular 18 Dashboard
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── components/
+│   │   │   │   ├── dashboard/      # Hauptdashboard mit Charts
+│   │   │   │   └── kpi-card/       # KPI Karten Komponente
+│   │   │   └── services/
+│   │   │       └── ads.service.ts  # API Service
+│   │   └── styles.scss             # Industrial Red Theme
+│   └── angular.json
+│
+├── public/                         # Static HTML Dashboards
+│   ├── dashboard-realtime.html     # Realtime Dashboard
+│   ├── dashboard-v4.html           # V4 Dashboard
+│   └── network-scanner.html        # Network Scanner UI
+│
+├── admin-dashboard-modern.html     # Modernes Admin Dashboard
+├── admin-dashboard-simple.html     # Einfaches Admin Dashboard
+├── dist/                           # Compiled JavaScript
+├── test-broker.js                  # API Test Script
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -76,6 +114,31 @@ POST /api/variables
 DELETE /api/variables/{id}
 ```
 
+### Multi-PLC Verwaltung
+
+```bash
+# Alle PLC-Routes auflisten
+GET /api/ads/routes
+
+# Neue PLC-Route hinzufügen
+POST /api/ads/routes
+{
+  "name": "PLC_Line1",
+  "amsNetId": "192.168.3.42.1.1",
+  "ipAddress": "192.168.3.42",
+  "port": 851
+}
+
+# PLC-Route löschen
+DELETE /api/ads/routes/{id}
+
+# Symbol Discovery starten
+POST /api/ads/discover
+{
+  "routeId": "route_id_here"
+}
+```
+
 ### Audit Logs
 
 ```bash
@@ -89,14 +152,42 @@ GET /api/audit/logs/variable/{id}
 GET /api/audit/stats
 ```
 
-## 📊 Admin Dashboard
+## 📊 Dashboards
 
-### Tabs
+### Angular Dashboard (Empfohlen)
+- **Industrial Red Theme** - Modernes, responsives Design
+- **Echtzeit-Charts** - Chart.js Integration mit Live-Updates
+- **KPI Cards** - Übersichtliche Kennzahlen-Darstellung
+- **Variable Management** - Vollständige CRUD-Operationen
+
+```bash
+cd ads-dashboard-angular
+npm install
+ng serve
+# Öffne http://localhost:4200
+```
+
+### Admin Dashboard (HTML)
+
+**Modern Version** (`admin-dashboard-modern.html`):
+- Dunkles Theme mit rotem Akzent
+- Responsives Grid-Layout
+- Live-Updates via WebSocket
+- Performance-Monitoring
+
+**Simple Version** (`admin-dashboard-simple.html`):
+- Leichtgewichtig und schnell
+- Einfache Tabellen-Ansicht
+- Grundlegende CRUD-Operationen
+
+### Dashboard Features
 
 1. **📊 Variablen** - Auflisten, Verwalten, Registrierungsinfo
 2. **➕ Variable hinzufügen** - Neue Variable erstellen
-3. **📋 Audit-Protokoll** - Alle Aktivitäten mit Filterung
-4. **📈 Statistiken** - Aktions-, User- und Status-Statistiken
+3. **🏭 Multi-PLC** - PLC-Routes verwalten und überwachen
+4. **🔍 Symbol Discovery** - Automatische Symboltabellen-Erkennung
+5. **📋 Audit-Protokoll** - Alle Aktivitäten mit Filterung
+6. **📈 Statistiken** - Aktions-, User- und Status-Statistiken
 
 ## 🔐 Audit-Logging
 
@@ -183,10 +274,36 @@ curl http://localhost:8080/api/health
 
 ## 📊 Performance
 
-- MQTT: Bis zu 10.000 Nachrichten/Sekunde
-- REST API: < 50ms Latenz
-- Audit Logs: Max. 10.000 In-Memory Einträge
-- Memory: ~50MB Standard Setup
+### Node.js Version
+- **MQTT Throughput**: Bis zu 10.000 Nachrichten/Sekunde
+- **REST API Latenz**: < 50ms
+- **ADS Notifications**: ~5ms Update-Latenz
+- **WebSocket Updates**: < 10ms
+- **Audit Logs**: Max. 10.000 In-Memory Einträge
+- **Memory**: ~50-100MB Standard Setup
+- **Multi-PLC**: Bis zu 10 PLCs gleichzeitig
+
+### C++ Version (ADS-MQTT-Broker-C++)
+- **Ultra-Low Latency**: <1ms mit ADS Device Notifications
+- **Native Performance**: AVX2 + Link-Time Optimization
+- **Memory Efficient**: <20MB RAM Usage
+- **Thread-Safe**: std::mutex für Multi-PLC
+- **Network Scanner**: Automatische PLC-Erkennung im Subnet
+- **Symbol Discovery**: Vollständige Symboltabellen-Analyse
+
+## 🔄 Vergleich: Node.js vs C++
+
+| Feature | Node.js | C++ |
+|---------|---------|-----|
+| **Latenz** | ~5ms | <1ms |
+| **Durchsatz** | 10.000 msg/s | 50.000+ msg/s |
+| **Memory** | ~100MB | ~20MB |
+| **Setup** | Einfach | Build-Tools erforderlich |
+| **Cross-Platform** | ✅ Sofort | ⚙️ Kompilierung nötig |
+| **Dashboard** | ✅ Angular + HTML | ⚠️ In Entwicklung |
+| **Multi-PLC** | ✅ | ✅ |
+| **Symbol Discovery** | ✅ | ✅ |
+| **Use Case** | Development, Testing | Production, Hard Realtime |
 
 ## 🔄 Development
 
@@ -209,7 +326,63 @@ MIT - Frei verwendbar für private und kommerzielle Projekte
 
 Für Fragen oder Issues, siehe Dokumentation oder erstellen Sie ein Issue.
 
+## 🔗 Repositories
+
+| Version | Repository | Status |
+|---------|------------|--------|
+| **Node.js** | [ADS-MQTT-Broker](https://github.com/chilledflo/ADS-MQTT-Broker) | ✅ Production Ready |
+| **C++** | [ADS-MQTT-Broker-C++](https://github.com/chilledflo/ADS-MQTT-Broker-C-) | ⚙️ In Development |
+
+## 🚦 Quick Start Guide
+
+### Node.js Setup (Empfohlen für Development)
+```bash
+# 1. Repository klonen
+git clone https://github.com/chilledflo/ADS-MQTT-Broker.git
+cd ADS-MQTT-Broker
+
+# 2. Dependencies installieren
+npm install
+
+# 3. Build & Start
+npm run build
+npm start
+
+# 4. Dashboard öffnen
+# http://localhost:8080/admin-dashboard-modern.html
+
+# 5. Angular Dashboard (optional)
+cd ads-dashboard-angular
+npm install
+ng serve
+# http://localhost:4200
+```
+
+### C++ Setup (Für Production)
+```bash
+# 1. Repository klonen
+git clone https://github.com/chilledflo/ADS-MQTT-Broker-C-.git
+cd ADS-MQTT-Broker-C-
+
+# 2. Build-Tools installieren (Windows)
+# - Visual Studio 2022 mit C++ Desktop Development
+# - CMake 3.20+
+# - vcpkg (C:\vcpkg)
+
+# 3. Dependencies installieren
+vcpkg install paho-mqttpp3:x64-windows nlohmann-json:x64-windows spdlog:x64-windows
+
+# 4. Build
+mkdir build && cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build . --config Release
+
+# 5. Run
+.\Release\ads-mqtt-broker.exe
+```
+
 ---
 
-**Version**: 2.0.0  
-**Status**: Production Ready ✅
+**Version**: 3.0.0  
+**Node.js**: ✅ Production Ready | **C++**: ⚙️ Beta  
+**Last Updated**: November 2025
