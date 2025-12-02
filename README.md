@@ -252,10 +252,20 @@ ADS_HOST=localhost
 ADS_PORT=48898
 ```
 
+### TwinCAT Route-Konfiguration
+
+Für Details zur TwinCAT-Route-Verwaltung und DLL-Informationen siehe:
+**[TWINCAT_ROUTE_DLL.md](TWINCAT_ROUTE_DLL.md)**
+
+- Windows: TcAdsDll2.dll (TwinCAT 3) / TcAdsDll.dll (TwinCAT 2)
+- Linux/Docker: Direkte TCP/IP-Verbindung, keine DLL erforderlich
+- Route-Setup für verschiedene Szenarien
+
 ## 📚 Dokumentation
 
 - `ADMIN_DASHBOARD_GUIDE.md` - Admin UI Dokumentation
 - `SEPARATION_AND_AUDIT.md` - Detailed Guides
+- `TWINCAT_ROUTE_DLL.md` - TwinCAT Route & DLL Dokumentation
 
 ## 🐛 Troubleshooting
 
@@ -266,6 +276,7 @@ API_PORT=9000 npm start
 
 **ADS-Verbindung fehlgeschlagen?**
 Der Broker läuft mit Mock-Daten für Development/Testing.
+Für Route-Konfiguration siehe `TWINCAT_ROUTE_DLL.md`.
 
 **Dashboard lädt nicht?**
 ```bash
